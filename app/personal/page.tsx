@@ -28,19 +28,37 @@ export default function PersonalPage() {
         return;
       }
 
-      const { data, error } = await supabase
-        .from("personas")
-        .select("id, cedula, nombres, grado, grupo, area, distrito, estado")
-        .order("nombres", { ascending: true });
+const pageSize = 1000;
+let desde = 0;
+let todasLasPersonas: Persona[] = [];
 
-      if (error) {
-        setMensaje(`Error al cargar personal: ${error.message}`);
-        setCargando(false);
-        return;
-      }
+while (true) {
+  const hasta = desde + pageSize - 1;
 
-      setPersonas(data ?? []);
-      setCargando(false);
+  const { data, error } = await supabase
+    .from("personas")
+    .select("id, cedula, nombres, grado, grupo, area, distrito, estado")
+    .order("nombres", { ascending: true })
+    .range(desde, hasta);
+
+  if (error) {
+    setMensaje(`Error al cargar personal: ${error.message}`);
+    setCargando(false);
+    return;
+  }
+
+  const lote = data ?? [];
+  todasLasPersonas = [...todasLasPersonas, ...lote];
+
+  if (lote.length < pageSize) {
+    break;
+  }
+
+  desde += pageSize;
+}
+
+setPersonas(todasLasPersonas);
+setCargando(false);
     }
 
     cargarPersonas();
