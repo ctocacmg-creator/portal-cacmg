@@ -25,9 +25,10 @@ export default function AsignacionesActivasPage() {
   const [asignaciones, setAsignaciones] = useState<AsignacionActiva[]>([]);
   const [cargando, setCargando] = useState(true);
   const [mensaje, setMensaje] = useState("");
-const [filtroCedula, setFiltroCedula] = useState("");
-const [filtroPuesto, setFiltroPuesto] = useState("");
-const [filtroDistrito, setFiltroDistrito] = useState("");
+  const [filtroCedula, setFiltroCedula] = useState("");
+  const [filtroPuesto, setFiltroPuesto] = useState("");
+  const [filtroDistrito, setFiltroDistrito] = useState("");
+  const [exportando, setExportando] = useState(false);
 
   async function cerrarAsignacion(id: string) {
     const confirmar = window.confirm(
@@ -37,6 +38,10 @@ const [filtroDistrito, setFiltroDistrito] = useState("");
     if (!confirmar) return;
 
     setMensaje("");
+
+    const asignacionCerrada = asignaciones.find(
+      (asignacion) => asignacion.id === id
+    );
 
     const hoy = new Date().toISOString().slice(0, 10);
 
@@ -54,29 +59,58 @@ const [filtroDistrito, setFiltroDistrito] = useState("");
       return;
     }
 
+    const { data: sessionData } = await supabase.auth.getSession();
+
+    await supabase.from("auditoria").insert({
+      modulo: "ASIGNACION",
+      accion: "ASIGNACION_CERRADA",
+      usuario_id: sessionData.session?.user.id ?? null,
+      cedula: asignacionCerrada?.cedula ?? null,
+      detalle: {
+        id_asignacion: id,
+        id_puesto: asignacionCerrada?.id_puesto ?? null,
+        fecha_fin: hoy,
+      },
+    });
+
     setAsignaciones((actuales) =>
       actuales.filter((asignacion) => asignacion.id !== id)
     );
 
-const asignacionCerrada = asignaciones.find(
-  (asignacion) => asignacion.id === id
-);
-
-const { data: sessionData } = await supabase.auth.getSession();
-
-await supabase.from("auditoria").insert({
-  modulo: "ASIGNACION",
-  accion: "ASIGNACION_CERRADA",
-  usuario_id: sessionData.session?.user.id ?? null,
-  cedula: asignacionCerrada?.cedula ?? null,
-  detalle: {
-    id_asignacion: id,
-    id_puesto: asignacionCerrada?.id_puesto ?? null,
-    fecha_fin: hoy,
-  },
-});
-
     setMensaje("Asignación cerrada correctamente.");
+  }
+
+  async function exportarAsignaciones() {
+    setExportando(true);
+    setMensaje("");
+
+    try {
+      const response = await fetch("/api/export/asignaciones-activas", {
+        method: "POST",
+      });
+
+      const resultado = await response.json();
+
+      if (!response.ok || !resultado.ok) {
+        setMensaje(
+          `Error exportando a Sheets: ${resultado.error ?? "Error desconocido"}`
+        );
+        setExportando(false);
+        return;
+      }
+
+      setMensaje(
+        `Exportación completada. Registros exportados: ${resultado.total}.`
+      );
+    } catch (error) {
+      setMensaje(
+        error instanceof Error
+          ? `Error exportando a Sheets: ${error.message}`
+          : "Error exportando a Sheets."
+      );
+    } finally {
+      setExportando(false);
+    }
   }
 
   useEffect(() => {
@@ -124,21 +158,21 @@ await supabase.from("auditoria").insert({
     cargarAsignaciones();
   }, []);
 
-const asignacionesFiltradas = asignaciones.filter((asignacion) => {
-  const coincideCedula = asignacion.cedula
-    .toLowerCase()
-    .includes(filtroCedula.toLowerCase().trim());
+  const asignacionesFiltradas = asignaciones.filter((asignacion) => {
+    const coincideCedula = asignacion.cedula
+      .toLowerCase()
+      .includes(filtroCedula.toLowerCase().trim());
 
-  const coincidePuesto = asignacion.id_puesto
-    .toLowerCase()
-    .includes(filtroPuesto.toLowerCase().trim());
+    const coincidePuesto = asignacion.id_puesto
+      .toLowerCase()
+      .includes(filtroPuesto.toLowerCase().trim());
 
-  const coincideDistrito = (asignacion.distrito ?? "")
-    .toLowerCase()
-    .includes(filtroDistrito.toLowerCase().trim());
+    const coincideDistrito = (asignacion.distrito ?? "")
+      .toLowerCase()
+      .includes(filtroDistrito.toLowerCase().trim());
 
-  return coincideCedula && coincidePuesto && coincideDistrito;
-});
+    return coincideCedula && coincidePuesto && coincideDistrito;
+  });
 
   if (cargando) {
     return (
@@ -164,7 +198,16 @@ const asignacionesFiltradas = asignaciones.filter((asignacion) => {
             </p>
           </div>
 
-          <div className="flex gap-3">
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={exportarAsignaciones}
+              disabled={exportando}
+              className="rounded-xl border border-emerald-700 px-4 py-2 text-sm font-semibold text-emerald-300 hover:border-emerald-400 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {exportando ? "Exportando..." : "Exportar a Sheets"}
+            </button>
+
             <a
               href="/asignacion/nueva"
               className="rounded-xl bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-300"
@@ -187,37 +230,43 @@ const asignacionesFiltradas = asignaciones.filter((asignacion) => {
           </div>
         ) : null}
 
-<div className="mt-8 grid gap-4 rounded-2xl border border-slate-800 bg-slate-900 p-5 md:grid-cols-3">
-  <div>
-    <label className="text-sm font-medium text-slate-300">Filtrar por cédula</label>
-    <input
-      value={filtroCedula}
-      onChange={(event) => setFiltroCedula(event.target.value)}
-      placeholder="Ej: 0929500890"
-      className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-400"
-    />
-  </div>
+        <div className="mt-8 grid gap-4 rounded-2xl border border-slate-800 bg-slate-900 p-5 md:grid-cols-3">
+          <div>
+            <label className="text-sm font-medium text-slate-300">
+              Filtrar por cédula
+            </label>
+            <input
+              value={filtroCedula}
+              onChange={(event) => setFiltroCedula(event.target.value)}
+              placeholder="Ej: 0929500890"
+              className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-400"
+            />
+          </div>
 
-  <div>
-    <label className="text-sm font-medium text-slate-300">Filtrar por puesto</label>
-    <input
-      value={filtroPuesto}
-      onChange={(event) => setFiltroPuesto(event.target.value)}
-      placeholder="Ej: D1-001"
-      className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-400"
-    />
-  </div>
+          <div>
+            <label className="text-sm font-medium text-slate-300">
+              Filtrar por puesto
+            </label>
+            <input
+              value={filtroPuesto}
+              onChange={(event) => setFiltroPuesto(event.target.value)}
+              placeholder="Ej: D1-001"
+              className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-400"
+            />
+          </div>
 
-  <div>
-    <label className="text-sm font-medium text-slate-300">Filtrar por distrito</label>
-    <input
-      value={filtroDistrito}
-      onChange={(event) => setFiltroDistrito(event.target.value)}
-      placeholder="Ej: D1"
-      className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-400"
-    />
-  </div>
-</div>
+          <div>
+            <label className="text-sm font-medium text-slate-300">
+              Filtrar por distrito
+            </label>
+            <input
+              value={filtroDistrito}
+              onChange={(event) => setFiltroDistrito(event.target.value)}
+              placeholder="Ej: D1"
+              className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-400"
+            />
+          </div>
+        </div>
 
         <div className="mt-8 rounded-2xl border border-slate-800 bg-slate-900">
           <div className="border-b border-slate-800 px-5 py-4">
