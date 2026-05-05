@@ -75,6 +75,43 @@ const { data: ausentismoActivo, error: errorAusentismo } = await supabase
   .gte("fecha_fin", fechaInicio)
   .maybeSingle();
 
+const { data: condicionEspecial, error: errorCondicion } = await supabase
+  .from("condiciones_especiales")
+  .select(
+    "id, tipo_condicion, fecha_inicio, fecha_fin, puede_operativo, restriccion_operativa"
+  )
+  .eq("cedula", cedulaLimpia)
+  .eq("estado", "ACTIVO")
+  .lte("fecha_inicio", fechaInicio)
+  .or(`fecha_fin.is.null,fecha_fin.gte.${fechaInicio}`)
+  .maybeSingle();
+
+if (errorCondicion) {
+  setMensaje(`Error validando condiciones especiales: ${errorCondicion.message}`);
+  setCargando(false);
+  return;
+}
+
+if (condicionEspecial?.puede_operativo === "NO") {
+  setMensaje(
+    `No se puede asignar. El agente tiene condición especial bloqueante: ${condicionEspecial.tipo_condicion}.`
+  );
+  setCargando(false);
+  return;
+}
+
+if (condicionEspecial?.puede_operativo === "RESTRINGIDO") {
+  const confirmar = window.confirm(
+    `El agente tiene condición especial RESTRINGIDA: ${condicionEspecial.tipo_condicion}. Restricción: ${condicionEspecial.restriccion_operativa ?? "Sin detalle"}. ¿Desea continuar con la asignación?`
+  );
+
+  if (!confirmar) {
+    setMensaje("Asignación cancelada por condición especial restringida.");
+    setCargando(false);
+    return;
+  }
+}
+
 if (errorAusentismo) {
   setMensaje(`Error validando ausentismos: ${errorAusentismo.message}`);
   setCargando(false);
