@@ -106,12 +106,21 @@ export default function AsignacionPage() {
             </p>
           </div>
 
-          <a
-            href="/dashboard"
-            className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:border-cyan-400 hover:text-cyan-300"
-          >
-            Volver al dashboard
-          </a>
+<div className="flex gap-3">
+  <a
+    href="/asignacion/nueva"
+    className="rounded-xl bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-300"
+  >
+    Nueva asignación
+  </a>
+
+  <a
+    href="/dashboard"
+    className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:border-cyan-400 hover:text-cyan-300"
+  >
+    Volver al dashboard
+  </a>
+</div>
         </div>
 
         {mensaje ? (
