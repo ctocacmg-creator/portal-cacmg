@@ -59,6 +59,11 @@ export default function DashboardPage() {
     "Distribución operativa por puestos, distritos, grupos y fechas.",
     "/asignacion",
   ],
+[
+  "CAD",
+  "Novedades operativas, bitácora, apoyos y estado en tiempo real.",
+  "/cad",
+],
   [
     "Asignaciones activas",
     "Consulta del personal actualmente asignado a puestos operativos.",
