@@ -21,6 +21,38 @@ export default function AsignacionesActivasPage() {
   const [cargando, setCargando] = useState(true);
   const [mensaje, setMensaje] = useState("");
 
+async function cerrarAsignacion(id: string) {
+  const confirmar = window.confirm(
+    "¿Seguro que deseas cerrar esta asignación activa?"
+  );
+
+  if (!confirmar) return;
+
+  setMensaje("");
+
+  const hoy = new Date().toISOString().slice(0, 10);
+
+  const { error } = await supabase
+    .from("asignaciones")
+    .update({
+      estado_asignacion: "FINALIZADO",
+      fecha_fin: hoy,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id);
+
+  if (error) {
+    setMensaje(`Error al cerrar asignación: ${error.message}`);
+    return;
+  }
+
+  setAsignaciones((actuales) =>
+    actuales.filter((asignacion) => asignacion.id !== id)
+  );
+
+  setMensaje("Asignación cerrada correctamente.");
+}
+
   useEffect(() => {
     async function cargarAsignaciones() {
       const { data: sessionData } = await supabase.auth.getSession();
@@ -139,6 +171,7 @@ export default function AsignacionesActivasPage() {
                     <th className="px-4 py-3">Horario</th>
                     <th className="px-4 py-3">Fecha inicio</th>
                     <th className="px-4 py-3">Estado</th>
+		    <th className="px-4 py-3">Acción</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -171,6 +204,15 @@ export default function AsignacionesActivasPage() {
                           {asignacion.estado_asignacion}
                         </span>
                       </td>
+			<td className="px-4 py-3">
+  			<button
+  			  type="button"
+    			onClick={() => cerrarAsignacion(asignacion.id)}
+   			 className="rounded-xl border border-red-800 px-3 py-1 text-xs font-semibold text-red-300 hover:border-red-500 hover:text-red-200"
+  >
+    Cerrar
+  </button>
+</td>
                     </tr>
                   ))}
                 </tbody>
