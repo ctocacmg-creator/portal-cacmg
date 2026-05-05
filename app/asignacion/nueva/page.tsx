@@ -66,6 +66,29 @@ export default function NuevaAsignacionPage() {
       return;
     }
 
+const { data: ausentismoActivo, error: errorAusentismo } = await supabase
+  .from("ausentismos")
+  .select("id, tipo_ausentismo, fecha_inicio, fecha_fin")
+  .eq("cedula", cedulaLimpia)
+  .eq("estado", "ACTIVO")
+  .lte("fecha_inicio", fechaInicio)
+  .gte("fecha_fin", fechaInicio)
+  .maybeSingle();
+
+if (errorAusentismo) {
+  setMensaje(`Error validando ausentismos: ${errorAusentismo.message}`);
+  setCargando(false);
+  return;
+}
+
+if (ausentismoActivo) {
+  setMensaje(
+    `No se puede asignar. El agente tiene ausentismo activo: ${ausentismoActivo.tipo_ausentismo} del ${ausentismoActivo.fecha_inicio} al ${ausentismoActivo.fecha_fin}.`
+  );
+  setCargando(false);
+  return;
+}
+
     const { data: asignacionActiva } = await supabase
       .from("asignaciones")
       .select("id, id_puesto")
