@@ -3,31 +3,30 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 
-type CadNovedad = {
+type ApoyoCad = {
   id: string;
-  id_novedad: string | null;
-  fecha: string;
-  hora: string | null;
-  tipo_novedad: string | null;
-  prioridad: string | null;
+  cedula: string | null;
+  nombre: string | null;
   distrito: string | null;
-  id_puesto: string | null;
-  cedula_reporta: string | null;
-  nombre_reporta: string | null;
-  descripcion: string | null;
-  estado_novedad: string | null;
+  id_puesto_origen: string | null;
+  id_puesto_destino: string | null;
+  tipo_apoyo: string | null;
+  estado_apoyo: string | null;
+  observacion: string | null;
+  fecha_cierre: string | null;
+  hora_cierre: string | null;
   created_at: string;
 };
 
-export default function CadPage() {
-  const [novedades, setNovedades] = useState<CadNovedad[]>([]);
+export default function CadApoyosPage() {
+  const [apoyos, setApoyos] = useState<ApoyoCad[]>([]);
   const [cargando, setCargando] = useState(true);
   const [mensaje, setMensaje] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("");
   const [filtroDistrito, setFiltroDistrito] = useState("");
 
   useEffect(() => {
-    async function cargarNovedades() {
+    async function cargarApoyos() {
       const { data: sessionData } = await supabase.auth.getSession();
 
       if (!sessionData.session) {
@@ -37,46 +36,46 @@ export default function CadPage() {
 
       const pageSize = 1000;
       let desde = 0;
-      let todas: CadNovedad[] = [];
+      let todos: ApoyoCad[] = [];
 
       while (true) {
         const hasta = desde + pageSize - 1;
 
         const { data, error } = await supabase
-          .from("cad_novedades")
+          .from("cad_apoyos_novedades")
           .select(
-            "id, id_novedad, fecha, hora, tipo_novedad, prioridad, distrito, id_puesto, cedula_reporta, nombre_reporta, descripcion, estado_novedad, created_at"
+            "id, cedula, nombre, distrito, id_puesto_origen, id_puesto_destino, tipo_apoyo, estado_apoyo, observacion, fecha_cierre, hora_cierre, created_at"
           )
           .order("created_at", { ascending: false })
           .range(desde, hasta);
 
         if (error) {
-          setMensaje(`Error al cargar novedades CAD: ${error.message}`);
+          setMensaje(`Error al cargar apoyos CAD: ${error.message}`);
           setCargando(false);
           return;
         }
 
         const lote = data ?? [];
-        todas = [...todas, ...lote];
+        todos = [...todos, ...lote];
 
         if (lote.length < pageSize) break;
 
         desde += pageSize;
       }
 
-      setNovedades(todas);
+      setApoyos(todos);
       setCargando(false);
     }
 
-    cargarNovedades();
+    cargarApoyos();
   }, []);
 
-  const novedadesFiltradas = novedades.filter((novedad) => {
-    const coincideEstado = (novedad.estado_novedad ?? "")
+  const apoyosFiltrados = apoyos.filter((apoyo) => {
+    const coincideEstado = (apoyo.estado_apoyo ?? "")
       .toLowerCase()
       .includes(filtroEstado.toLowerCase().trim());
 
-    const coincideDistrito = (novedad.distrito ?? "")
+    const coincideDistrito = (apoyo.distrito ?? "")
       .toLowerCase()
       .includes(filtroDistrito.toLowerCase().trim());
 
@@ -86,7 +85,7 @@ export default function CadPage() {
   if (cargando) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
-        <p className="text-slate-300">Cargando novedades CAD...</p>
+        <p className="text-slate-300">Cargando apoyos CAD...</p>
       </main>
     );
   }
@@ -100,30 +99,28 @@ export default function CadPage() {
               CACM-G
             </p>
 
-            <h1 className="mt-4 text-3xl font-bold">CAD Operativo</h1>
+            <h1 className="mt-4 text-3xl font-bold">Apoyos CAD</h1>
 
             <p className="mt-3 text-slate-400">
-              Novedades operativas registradas en el módulo CAD.
+              Apoyos asignados a novedades operativas.
             </p>
           </div>
-<a
-  href="/cad/estado"
-  className="rounded-xl border border-cyan-700 px-4 py-2 text-sm text-cyan-300 hover:border-cyan-400 hover:text-cyan-200"
->
-  Estado tiempo real
-</a>
-<a
-  href="/cad/apoyos"
-  className="rounded-xl border border-cyan-700 px-4 py-2 text-sm text-cyan-300 hover:border-cyan-400 hover:text-cyan-200"
->
-  Apoyos
-</a>
-          <a
-            href="/dashboard"
-            className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:border-cyan-400 hover:text-cyan-300"
-          >
-            Volver al dashboard
-          </a>
+
+          <div className="flex flex-wrap gap-3">
+            <a
+              href="/cad"
+              className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:border-cyan-400 hover:text-cyan-300"
+            >
+              Volver a CAD
+            </a>
+
+            <a
+              href="/dashboard"
+              className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:border-cyan-400 hover:text-cyan-300"
+            >
+              Dashboard
+            </a>
+          </div>
         </div>
 
         {mensaje ? (
@@ -140,7 +137,7 @@ export default function CadPage() {
             <input
               value={filtroEstado}
               onChange={(event) => setFiltroEstado(event.target.value)}
-              placeholder="Ej: ABIERTA, CERRADA"
+              placeholder="Ej: ACTIVO, CERRADO"
               className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-400"
             />
           </div>
@@ -160,70 +157,64 @@ export default function CadPage() {
 
         <div className="mt-8 rounded-2xl border border-slate-800 bg-slate-900">
           <div className="border-b border-slate-800 px-5 py-4">
-            <h2 className="font-semibold text-cyan-300">Novedades</h2>
+            <h2 className="font-semibold text-cyan-300">Apoyos registrados</h2>
             <p className="mt-1 text-sm text-slate-400">
-              Total: {novedadesFiltradas.length} de {novedades.length}
+              Total: {apoyosFiltrados.length} de {apoyos.length}
             </p>
           </div>
 
-          {novedadesFiltradas.length === 0 ? (
+          {apoyosFiltrados.length === 0 ? (
             <div className="px-5 py-10 text-center text-slate-400">
-              No hay novedades CAD para mostrar.
+              No hay apoyos CAD para mostrar.
             </div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm">
                 <thead className="bg-slate-950 text-slate-300">
                   <tr>
-                    <th className="px-4 py-3">ID</th>
-                    <th className="px-4 py-3">Fecha</th>
-                    <th className="px-4 py-3">Hora</th>
-                    <th className="px-4 py-3">Tipo</th>
-                    <th className="px-4 py-3">Prioridad</th>
+                    <th className="px-4 py-3">Cédula</th>
+                    <th className="px-4 py-3">Nombre</th>
                     <th className="px-4 py-3">Distrito</th>
-                    <th className="px-4 py-3">Puesto</th>
-                    <th className="px-4 py-3">Reporta</th>
-                    <th className="px-4 py-3">Descripción</th>
+                    <th className="px-4 py-3">Origen</th>
+                    <th className="px-4 py-3">Destino</th>
+                    <th className="px-4 py-3">Tipo</th>
                     <th className="px-4 py-3">Estado</th>
+                    <th className="px-4 py-3">Cierre</th>
+                    <th className="px-4 py-3">Observación</th>
                   </tr>
                 </thead>
 
                 <tbody>
-                  {novedadesFiltradas.map((novedad) => (
-                    <tr key={novedad.id} className="border-t border-slate-800">
+                  {apoyosFiltrados.map((apoyo) => (
+                    <tr key={apoyo.id} className="border-t border-slate-800">
                       <td className="px-4 py-3 font-medium">
-                        {novedad.id_novedad ?? "-"}
+                        {apoyo.cedula ?? "-"}
                       </td>
                       <td className="px-4 py-3 text-slate-300">
-                        {novedad.fecha}
+                        {apoyo.nombre ?? "-"}
                       </td>
                       <td className="px-4 py-3 text-slate-300">
-                        {novedad.hora ?? "-"}
+                        {apoyo.distrito ?? "-"}
                       </td>
                       <td className="px-4 py-3 text-slate-300">
-                        {novedad.tipo_novedad ?? "-"}
+                        {apoyo.id_puesto_origen ?? "-"}
                       </td>
                       <td className="px-4 py-3 text-slate-300">
-                        {novedad.prioridad ?? "-"}
+                        {apoyo.id_puesto_destino ?? "-"}
                       </td>
                       <td className="px-4 py-3 text-slate-300">
-                        {novedad.distrito ?? "-"}
-                      </td>
-                      <td className="px-4 py-3 text-slate-300">
-                        {novedad.id_puesto ?? "-"}
-                      </td>
-                      <td className="px-4 py-3 text-slate-300">
-                        {novedad.nombre_reporta ??
-                          novedad.cedula_reporta ??
-                          "-"}
-                      </td>
-                      <td className="max-w-xl px-4 py-3 text-slate-300">
-                        {novedad.descripcion ?? "-"}
+                        {apoyo.tipo_apoyo ?? "-"}
                       </td>
                       <td className="px-4 py-3">
                         <span className="rounded-full bg-cyan-400/10 px-3 py-1 text-xs font-semibold text-cyan-300">
-                          {novedad.estado_novedad ?? "SIN ESTADO"}
+                          {apoyo.estado_apoyo ?? "SIN ESTADO"}
                         </span>
+                      </td>
+                      <td className="px-4 py-3 text-slate-300">
+                        {apoyo.fecha_cierre ?? "-"} {apoyo.hora_cierre ?? ""}
+                      </td>
+                      <td className="max-w-xl px-4 py-3 text-slate-300">
+                        {apoyo.observacion ?? "-"}
                       </td>
                     </tr>
                   ))}
