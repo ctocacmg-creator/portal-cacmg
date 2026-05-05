@@ -121,6 +121,13 @@ export default function AsignacionPage() {
   Ver activas
 </a>
 
+<a
+  href="/asignacion/control"
+  className="rounded-xl border border-amber-700 px-4 py-2 text-sm text-amber-300 hover:border-amber-400 hover:text-amber-200"
+>
+  Control
+</a>
+
   <a
     href="/dashboard"
     className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:border-cyan-400 hover:text-cyan-300"
