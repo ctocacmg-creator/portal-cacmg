@@ -1,4 +1,34 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabase/client";
+
 export default function DashboardPage() {
+  const [validando, setValidando] = useState(true);
+
+  useEffect(() => {
+    async function verificarSesion() {
+      const { data } = await supabase.auth.getSession();
+
+      if (!data.session) {
+        window.location.href = "/login";
+        return;
+      }
+
+      setValidando(false);
+    }
+
+    verificarSesion();
+  }, []);
+
+  if (validando) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
+        <p className="text-slate-300">Validando sesión...</p>
+      </main>
+    );
+  }
+
   return (
     <main className="min-h-screen bg-slate-950 px-6 py-8 text-white">
       <section className="mx-auto max-w-6xl">
@@ -6,9 +36,7 @@ export default function DashboardPage() {
           CACM-G
         </p>
 
-        <h1 className="mt-4 text-3xl font-bold">
-          Panel operativo
-        </h1>
+        <h1 className="mt-4 text-3xl font-bold">Panel operativo</h1>
 
         <p className="mt-3 text-slate-400">
           Módulos principales para la gestión del Portal del Agente.
@@ -16,8 +44,14 @@ export default function DashboardPage() {
 
         <div className="mt-8 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
           {[
-            ["Personal", "Nómina, ficha del agente, ausentismos y condiciones especiales."],
-            ["Asignación", "Distribución operativa por puestos, distritos, grupos y fechas."],
+            [
+              "Personal",
+              "Nómina, ficha del agente, ausentismos y condiciones especiales.",
+            ],
+            [
+              "Asignación",
+              "Distribución operativa por puestos, distritos, grupos y fechas.",
+            ],
             ["CAD", "Novedades operativas, bitácora, apoyos e historial."],
             ["Auditoría", "Trazabilidad de acciones, usuarios y cambios relevantes."],
             ["Reportes", "Indicadores, exportaciones y reportes operativos."],
