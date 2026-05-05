@@ -6,7 +6,7 @@ dotenv.config({ path: ".env.local" });
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+const spreadsheetId = process.env.GOOGLE_ASIGNACION_SHEET_ID;
 const credentialsPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
 
 if (!supabaseUrl || !serviceRoleKey || !spreadsheetId || !credentialsPath) {
@@ -22,8 +22,22 @@ const auth = new google.auth.GoogleAuth({
 
 const sheets = google.sheets({ version: "v4", auth });
 
-const hojasDistritos = ["D1", "D2", "D3", "D4", "D5", "D6", "D7", "D8", "D9", "D10"];
-
+const hojasDistritos = [
+  "D1",
+  "D2",
+  "D3",
+  "D4",
+  "D5",
+  "D6",
+  "D7",
+  "D8",
+  "D9",
+  "D10",
+  "UAC",
+  "EAS",
+  "ASC",
+  "OTROS",
+];
 function normalizarTexto(valor) {
   return String(valor ?? "").trim();
 }
@@ -51,7 +65,7 @@ function buscarColumna(headers, posiblesNombres) {
 }
 
 async function importarHojaDistrito(nombreHoja) {
-  const range = `${nombreHoja}!A:Z`;
+  const range = `'${nombreHoja}'!A:Z`;
 
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId,
