@@ -162,6 +162,19 @@ if (ausentismoActivo) {
       return;
     }
 
+await supabase.from("auditoria").insert({
+  modulo: "ASIGNACION",
+  accion: "ASIGNACION_CREADA",
+  usuario_id: sessionData.session.user.id,
+  cedula: persona.cedula,
+  detalle: {
+    id_puesto: puesto.id_puesto,
+    fecha_inicio: fechaInicio,
+    funcion: funcion.trim().toUpperCase() || null,
+    horario: horario.trim().toUpperCase() || null,
+  },
+});
+
     setMensaje("Asignación creada correctamente.");
     setCedula("");
     setIdPuesto("");

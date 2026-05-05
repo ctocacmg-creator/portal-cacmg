@@ -55,6 +55,24 @@ export default function AsignacionesActivasPage() {
       actuales.filter((asignacion) => asignacion.id !== id)
     );
 
+const asignacionCerrada = asignaciones.find(
+  (asignacion) => asignacion.id === id
+);
+
+const { data: sessionData } = await supabase.auth.getSession();
+
+await supabase.from("auditoria").insert({
+  modulo: "ASIGNACION",
+  accion: "ASIGNACION_CERRADA",
+  usuario_id: sessionData.session?.user.id ?? null,
+  cedula: asignacionCerrada?.cedula ?? null,
+  detalle: {
+    id_asignacion: id,
+    id_puesto: asignacionCerrada?.id_puesto ?? null,
+    fecha_fin: hoy,
+  },
+});
+
     setMensaje("Asignación cerrada correctamente.");
   }
 
