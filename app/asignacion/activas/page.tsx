@@ -25,6 +25,9 @@ export default function AsignacionesActivasPage() {
   const [asignaciones, setAsignaciones] = useState<AsignacionActiva[]>([]);
   const [cargando, setCargando] = useState(true);
   const [mensaje, setMensaje] = useState("");
+const [filtroCedula, setFiltroCedula] = useState("");
+const [filtroPuesto, setFiltroPuesto] = useState("");
+const [filtroDistrito, setFiltroDistrito] = useState("");
 
   async function cerrarAsignacion(id: string) {
     const confirmar = window.confirm(
@@ -121,6 +124,22 @@ await supabase.from("auditoria").insert({
     cargarAsignaciones();
   }, []);
 
+const asignacionesFiltradas = asignaciones.filter((asignacion) => {
+  const coincideCedula = asignacion.cedula
+    .toLowerCase()
+    .includes(filtroCedula.toLowerCase().trim());
+
+  const coincidePuesto = asignacion.id_puesto
+    .toLowerCase()
+    .includes(filtroPuesto.toLowerCase().trim());
+
+  const coincideDistrito = (asignacion.distrito ?? "")
+    .toLowerCase()
+    .includes(filtroDistrito.toLowerCase().trim());
+
+  return coincideCedula && coincidePuesto && coincideDistrito;
+});
+
   if (cargando) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
@@ -168,15 +187,47 @@ await supabase.from("auditoria").insert({
           </div>
         ) : null}
 
+<div className="mt-8 grid gap-4 rounded-2xl border border-slate-800 bg-slate-900 p-5 md:grid-cols-3">
+  <div>
+    <label className="text-sm font-medium text-slate-300">Filtrar por cédula</label>
+    <input
+      value={filtroCedula}
+      onChange={(event) => setFiltroCedula(event.target.value)}
+      placeholder="Ej: 0929500890"
+      className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-400"
+    />
+  </div>
+
+  <div>
+    <label className="text-sm font-medium text-slate-300">Filtrar por puesto</label>
+    <input
+      value={filtroPuesto}
+      onChange={(event) => setFiltroPuesto(event.target.value)}
+      placeholder="Ej: D1-001"
+      className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-400"
+    />
+  </div>
+
+  <div>
+    <label className="text-sm font-medium text-slate-300">Filtrar por distrito</label>
+    <input
+      value={filtroDistrito}
+      onChange={(event) => setFiltroDistrito(event.target.value)}
+      placeholder="Ej: D1"
+      className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-400"
+    />
+  </div>
+</div>
+
         <div className="mt-8 rounded-2xl border border-slate-800 bg-slate-900">
           <div className="border-b border-slate-800 px-5 py-4">
             <h2 className="font-semibold text-cyan-300">Registros activos</h2>
             <p className="mt-1 text-sm text-slate-400">
-              Total: {asignaciones.length}
+              Total: {asignacionesFiltradas.length} de {asignaciones.length}
             </p>
           </div>
 
-          {asignaciones.length === 0 ? (
+          {asignacionesFiltradas.length === 0 ? (
             <div className="px-5 py-10 text-center text-slate-400">
               No hay asignaciones activas.
             </div>
@@ -201,7 +252,7 @@ await supabase.from("auditoria").insert({
                 </thead>
 
                 <tbody>
-                  {asignaciones.map((asignacion) => (
+                  {asignacionesFiltradas.map((asignacion) => (
                     <tr
                       key={asignacion.id}
                       className="border-t border-slate-800"
