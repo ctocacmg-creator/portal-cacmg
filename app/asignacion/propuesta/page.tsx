@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 
 type Disponible = {
@@ -86,6 +86,17 @@ export default function PropuestaAsignacionPage() {
   const [observacionManual, setObservacionManual] = useState(
     "Agregado manualmente a propuesta."
   );
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const borradorParam = params.get("borrador");
+
+    if (borradorParam) {
+      cargarBorradorPorId(borradorParam);
+    }
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function cargarBasePropuesta(fechaConsulta: string) {
     const { data: disponiblesData, error: errorDisponibles } =
@@ -405,6 +416,59 @@ export default function PropuestaAsignacionPage() {
     setGuardandoBorrador(false);
   }
 
+  async function cargarBorradorPorId(id: string) {
+    setCargandoBorrador(true);
+    setMensaje("");
+
+    const { data: sessionData } = await supabase.auth.getSession();
+
+    if (!sessionData.session) {
+      window.location.href = "/login";
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("propuestas_asignacion")
+      .select(
+        "id, fecha, estado, total_registros, observacion, detalle, created_at"
+      )
+      .eq("id", id)
+      .single<BorradorPropuesta>();
+
+    if (error || !data) {
+      setMensaje("No se encontró el borrador solicitado.");
+      setCargandoBorrador(false);
+      return;
+    }
+
+    if (data.estado !== "BORRADOR") {
+      setMensaje("La propuesta seleccionada ya no está en estado BORRADOR.");
+      setCargandoBorrador(false);
+      return;
+    }
+
+    try {
+      await cargarBasePropuesta(data.fecha);
+
+      setBorradorId(data.id);
+      setFecha(data.fecha);
+      setPropuestas((data.detalle ?? []) as Propuesta[]);
+      setMensaje(
+        `Borrador cargado correctamente. Fecha: ${data.fecha}. Registros: ${
+          data.total_registros ?? data.detalle?.length ?? 0
+        }.`
+      );
+    } catch (cargarError) {
+      setMensaje(
+        cargarError instanceof Error
+          ? cargarError.message
+          : "Borrador cargado, pero falló la carga de datos base."
+      );
+    } finally {
+      setCargandoBorrador(false);
+    }
+  }
+
   async function cargarUltimoBorrador() {
     setCargandoBorrador(true);
     setMensaje("");
@@ -629,6 +693,17 @@ export default function PropuestaAsignacionPage() {
       return texto.includes(cedulaManual.toLowerCase().trim());
     })
     .slice(0, 10);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const borradorParam = params.get("borrador");
+
+    if (borradorParam) {
+      cargarBorradorPorId(borradorParam);
+    }
+
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <main className="min-h-screen bg-slate-950 px-6 py-8 text-white">
