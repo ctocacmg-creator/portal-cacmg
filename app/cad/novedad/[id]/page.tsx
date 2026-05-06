@@ -51,11 +51,109 @@ type Apoyo = {
 
 export default function DetalleNovedadCadPage() {
   const params = useParams<{ id: string }>();
+
   const [novedad, setNovedad] = useState<Novedad | null>(null);
   const [bitacora, setBitacora] = useState<Bitacora[]>([]);
   const [apoyos, setApoyos] = useState<Apoyo[]>([]);
   const [cargando, setCargando] = useState(true);
   const [mensaje, setMensaje] = useState("");
+  const [cerrando, setCerrando] = useState(false);
+
+  async function cerrarNovedad() {
+    if (!novedad) return;
+
+    const confirmar = window.confirm(
+      "¿Seguro que deseas cerrar esta novedad CAD?"
+    );
+
+    if (!confirmar) return;
+
+    setCerrando(true);
+    setMensaje("");
+
+    const ahora = new Date();
+    const fechaCierre = ahora.toISOString().slice(0, 10);
+    const horaCierre = ahora.toTimeString().slice(0, 8);
+
+    const { data: sessionData } = await supabase.auth.getSession();
+
+    const { error: errorUpdate } = await supabase
+      .from("cad_novedades")
+      .update({
+        estado_novedad: "CERRADA",
+        fecha_cierre: fechaCierre,
+        hora_cierre: horaCierre,
+        updated_at: ahora.toISOString(),
+      })
+      .eq("id", novedad.id);
+
+    if (errorUpdate) {
+      setMensaje(`Error al cerrar novedad: ${errorUpdate.message}`);
+      setCerrando(false);
+      return;
+    }
+
+    const { error: errorBitacora } = await supabase
+      .from("cad_bitacora_novedades")
+      .insert({
+        novedad_id: novedad.id,
+        accion: "NOVEDAD_CERRADA",
+        estado_anterior: novedad.estado_novedad,
+        estado_nuevo: "CERRADA",
+        comentario: "Novedad cerrada desde el portal.",
+        registrado_por: sessionData.session?.user.id ?? null,
+      });
+
+    if (errorBitacora) {
+      setMensaje(
+        `La novedad se cerró, pero falló el registro de bitácora: ${errorBitacora.message}`
+      );
+      setCerrando(false);
+      return;
+    }
+
+    const { error: errorAuditoria } = await supabase.from("auditoria").insert({
+      modulo: "CAD",
+      accion: "NOVEDAD_CERRADA",
+      usuario_id: sessionData.session?.user.id ?? null,
+      cedula: novedad.cedula_reporta,
+      detalle: {
+        id_novedad: novedad.id_novedad,
+        fecha_cierre: fechaCierre,
+        hora_cierre: horaCierre,
+      },
+    });
+
+    if (errorAuditoria) {
+      setMensaje(
+        `La novedad se cerró, pero falló el registro de auditoría: ${errorAuditoria.message}`
+      );
+      setCerrando(false);
+      return;
+    }
+
+    setNovedad({
+      ...novedad,
+      estado_novedad: "CERRADA",
+      fecha_cierre: fechaCierre,
+      hora_cierre: horaCierre,
+    });
+
+    setBitacora((actual) => [
+      {
+        id: crypto.randomUUID(),
+        accion: "NOVEDAD_CERRADA",
+        estado_anterior: novedad.estado_novedad,
+        estado_nuevo: "CERRADA",
+        comentario: "Novedad cerrada desde el portal.",
+        created_at: ahora.toISOString(),
+      },
+      ...actual,
+    ]);
+
+    setMensaje("Novedad cerrada correctamente.");
+    setCerrando(false);
+  }
 
   useEffect(() => {
     async function cargarDetalle() {
@@ -86,7 +184,9 @@ export default function DetalleNovedadCadPage() {
 
       const { data: bitacoraData } = await supabase
         .from("cad_bitacora_novedades")
-        .select("id, accion, estado_anterior, estado_nuevo, comentario, created_at")
+        .select(
+          "id, accion, estado_anterior, estado_nuevo, comentario, created_at"
+        )
         .eq("novedad_id", id)
         .order("created_at", { ascending: false });
 
@@ -122,6 +222,7 @@ export default function DetalleNovedadCadPage() {
           <p className="text-slate-300">
             {mensaje || "No se encontró la novedad CAD."}
           </p>
+
           <a
             href="/cad"
             className="mt-4 inline-block text-sm text-cyan-300 hover:text-cyan-200"
@@ -152,6 +253,17 @@ export default function DetalleNovedadCadPage() {
           </div>
 
           <div className="flex flex-wrap gap-3">
+            {novedad.estado_novedad !== "CERRADA" ? (
+              <button
+                type="button"
+                onClick={cerrarNovedad}
+                disabled={cerrando}
+                className="rounded-xl border border-red-800 px-4 py-2 text-sm font-semibold text-red-300 hover:border-red-500 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {cerrando ? "Cerrando..." : "Cerrar novedad"}
+              </button>
+            ) : null}
+
             <a
               href="/cad"
               className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:border-cyan-400 hover:text-cyan-300"
@@ -167,6 +279,12 @@ export default function DetalleNovedadCadPage() {
             </a>
           </div>
         </div>
+
+        {mensaje ? (
+          <div className="mt-6 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-300">
+            {mensaje}
+          </div>
+        ) : null}
 
         <div className="mt-8 grid gap-5 lg:grid-cols-3">
           <div className="rounded-2xl border border-slate-800 bg-slate-900 p-5">
@@ -199,22 +317,27 @@ export default function DetalleNovedadCadPage() {
               <span className="text-slate-500">Tipo:</span>{" "}
               {novedad.tipo_novedad ?? "-"}
             </p>
+
             <p className="text-sm text-slate-300">
               <span className="text-slate-500">Prioridad:</span>{" "}
               {novedad.prioridad ?? "-"}
             </p>
+
             <p className="text-sm text-slate-300">
               <span className="text-slate-500">Circuito:</span>{" "}
               {novedad.circuito ?? "-"}
             </p>
+
             <p className="text-sm text-slate-300">
               <span className="text-slate-500">Subcircuito:</span>{" "}
               {novedad.subcircuito ?? "-"}
             </p>
+
             <p className="text-sm text-slate-300">
               <span className="text-slate-500">Reporta:</span>{" "}
               {novedad.nombre_reporta ?? novedad.cedula_reporta ?? "-"}
             </p>
+
             <p className="text-sm text-slate-300">
               <span className="text-slate-500">Asignado a:</span>{" "}
               {novedad.asignado_a ?? "-"}
@@ -256,12 +379,15 @@ export default function DetalleNovedadCadPage() {
                     <p className="font-semibold text-cyan-300">
                       {registro.accion}
                     </p>
+
                     <p className="mt-1 text-xs text-slate-500">
                       {new Date(registro.created_at).toLocaleString()}
                     </p>
+
                     <p className="mt-3 text-sm text-slate-300">
                       {registro.comentario ?? "-"}
                     </p>
+
                     <p className="mt-2 text-xs text-slate-500">
                       {registro.estado_anterior ?? "-"} →{" "}
                       {registro.estado_nuevo ?? "-"}
@@ -291,16 +417,20 @@ export default function DetalleNovedadCadPage() {
                     <p className="font-semibold text-cyan-300">
                       {apoyo.nombre ?? apoyo.cedula ?? "-"}
                     </p>
+
                     <p className="mt-1 text-xs text-slate-500">
                       {new Date(apoyo.created_at).toLocaleString()}
                     </p>
+
                     <p className="mt-3 text-sm text-slate-300">
                       {apoyo.tipo_apoyo ?? "-"} / {apoyo.estado_apoyo ?? "-"}
                     </p>
+
                     <p className="mt-2 text-xs text-slate-500">
                       {apoyo.id_puesto_origen ?? "-"} →{" "}
                       {apoyo.id_puesto_destino ?? "-"}
                     </p>
+
                     <p className="mt-2 text-sm text-slate-400">
                       {apoyo.observacion ?? ""}
                     </p>
