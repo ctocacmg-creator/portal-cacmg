@@ -137,6 +137,7 @@ export default function CiclosPage() {
   const [filtroCiclo, setFiltroCiclo] = useState("");
   const [filtroMes, setFiltroMes] = useState("");
   const [filtroGrupo, setFiltroGrupo] = useState("");
+const [exportando, setExportando] = useState(false);
 
   useEffect(() => {
     async function cargarCiclos() {
@@ -187,6 +188,38 @@ export default function CiclosPage() {
   })
 );
 
+async function exportarCiclos() {
+  setExportando(true);
+  setMensaje("");
+
+  try {
+    const response = await fetch("/api/export/ciclos", {
+      method: "POST",
+    });
+
+    const resultado = await response.json();
+
+    if (!response.ok || !resultado.ok) {
+      setMensaje(
+        `Error exportando ciclos: ${resultado.error ?? "Error desconocido"}`
+      );
+      return;
+    }
+
+    setMensaje(
+      `Exportación completada. Ciclos exportados: ${resultado.total}.`
+    );
+  } catch (error) {
+    setMensaje(
+      error instanceof Error
+        ? `Error exportando ciclos: ${error.message}`
+        : "Error exportando ciclos."
+    );
+  } finally {
+    setExportando(false);
+  }
+}
+
   if (cargando) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
@@ -211,12 +244,23 @@ export default function CiclosPage() {
             </p>
           </div>
 
-          <a
-            href="/dashboard"
-            className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:border-cyan-400 hover:text-cyan-300"
-          >
-            Volver al dashboard
-          </a>
+          <div className="flex flex-wrap gap-3">
+  <button
+    type="button"
+    onClick={exportarCiclos}
+    disabled={exportando}
+    className="rounded-xl border border-emerald-700 px-4 py-2 text-sm font-semibold text-emerald-300 hover:border-emerald-400 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
+  >
+    {exportando ? "Exportando..." : "Exportar ciclos"}
+  </button>
+
+  <a
+    href="/dashboard"
+    className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:border-cyan-400 hover:text-cyan-300"
+  >
+    Volver al dashboard
+  </a>
+</div>
         </div>
 
         {mensaje ? (
