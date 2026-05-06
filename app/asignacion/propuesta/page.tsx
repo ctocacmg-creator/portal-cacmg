@@ -56,6 +56,16 @@ type PuestoAsignacion = {
   id_puesto: string;
 };
 
+type BorradorPropuesta = {
+  id: string;
+  fecha: string;
+  estado: string;
+  total_registros: number | null;
+  observacion: string | null;
+  detalle: Propuesta[];
+  created_at: string;
+};
+
 export default function PropuestaAsignacionPage() {
   const [fecha, setFecha] = useState("");
   const [disponibles, setDisponibles] = useState<Disponible[]>([]);
@@ -65,6 +75,9 @@ export default function PropuestaAsignacionPage() {
   const [mensaje, setMensaje] = useState("");
   const [generando, setGenerando] = useState(false);
   const [aplicando, setAplicando] = useState(false);
+  const [guardandoBorrador, setGuardandoBorrador] = useState(false);
+  const [cargandoBorrador, setCargandoBorrador] = useState(false);
+  const [borradorId, setBorradorId] = useState("");
   const [filtro, setFiltro] = useState("");
   const [cedulaManual, setCedulaManual] = useState("");
   const [puestoManual, setPuestoManual] = useState("");
@@ -135,6 +148,7 @@ export default function PropuestaAsignacionPage() {
 
     setGenerando(true);
     setMensaje("");
+    setBorradorId("");
     setDisponibles([]);
     setPuestosDeficit([]);
     setPuestos([]);
@@ -192,7 +206,9 @@ export default function PropuestaAsignacionPage() {
         `Propuesta generada. Disponibles: ${personalDisponible.length}. Puestos con déficit: ${puestosConDeficit.length}. Asignaciones propuestas: ${propuestaGenerada.length}.`
       );
     } catch (error) {
-      setMensaje(error instanceof Error ? error.message : "Error generando propuesta.");
+      setMensaje(
+        error instanceof Error ? error.message : "Error generando propuesta."
+      );
     } finally {
       setGenerando(false);
     }
@@ -316,7 +332,8 @@ export default function PropuestaAsignacionPage() {
         estado_ciclo: persona.estado_ciclo,
         funcion: funcionManual.trim().toUpperCase() || "SERVICIO OPERATIVO",
         horario: horarioManual.trim().toUpperCase(),
-        observacion: observacionManual.trim() || "Agregado manualmente a propuesta.",
+        observacion:
+          observacionManual.trim() || "Agregado manualmente a propuesta.",
       };
 
       setPropuestas((actual) => [...actual, nuevaPropuesta]);
@@ -328,6 +345,112 @@ export default function PropuestaAsignacionPage() {
           ? error.message
           : "Error agregando manualmente a la propuesta."
       );
+    }
+  }
+
+  async function guardarBorrador() {
+    if (!fecha) {
+      setMensaje("Selecciona una fecha antes de guardar el borrador.");
+      return;
+    }
+
+    if (propuestas.length === 0) {
+      setMensaje("No hay propuestas para guardar como borrador.");
+      return;
+    }
+
+    setGuardandoBorrador(true);
+    setMensaje("");
+
+    const { data: sessionData } = await supabase.auth.getSession();
+
+    if (!sessionData.session) {
+      window.location.href = "/login";
+      return;
+    }
+
+    const payload = {
+      fecha,
+      estado: "BORRADOR",
+      total_registros: propuestas.length,
+      creado_por: sessionData.session.user.id,
+      observacion: "Borrador generado desde propuesta automática.",
+      detalle: propuestas,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = borradorId
+      ? await supabase
+          .from("propuestas_asignacion")
+          .update(payload)
+          .eq("id", borradorId)
+          .select("id")
+          .single()
+      : await supabase
+          .from("propuestas_asignacion")
+          .insert(payload)
+          .select("id")
+          .single();
+
+    if (error) {
+      setMensaje(`Error guardando borrador: ${error.message}`);
+      setGuardandoBorrador(false);
+      return;
+    }
+
+    setBorradorId(data.id);
+    setMensaje(
+      `Borrador guardado correctamente. Registros: ${propuestas.length}.`
+    );
+    setGuardandoBorrador(false);
+  }
+
+  async function cargarUltimoBorrador() {
+    setCargandoBorrador(true);
+    setMensaje("");
+
+    const { data: sessionData } = await supabase.auth.getSession();
+
+    if (!sessionData.session) {
+      window.location.href = "/login";
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from("propuestas_asignacion")
+      .select(
+        "id, fecha, estado, total_registros, observacion, detalle, created_at"
+      )
+      .eq("estado", "BORRADOR")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .single<BorradorPropuesta>();
+
+    if (error || !data) {
+      setMensaje("No se encontró un borrador disponible.");
+      setCargandoBorrador(false);
+      return;
+    }
+
+    try {
+      await cargarBasePropuesta(data.fecha);
+
+      setBorradorId(data.id);
+      setFecha(data.fecha);
+      setPropuestas((data.detalle ?? []) as Propuesta[]);
+      setMensaje(
+        `Borrador cargado correctamente. Fecha: ${data.fecha}. Registros: ${
+          data.total_registros ?? data.detalle?.length ?? 0
+        }.`
+      );
+    } catch (cargarError) {
+      setMensaje(
+        cargarError instanceof Error
+          ? cargarError.message
+          : "Borrador cargado, pero falló la carga de datos base."
+      );
+    } finally {
+      setCargandoBorrador(false);
     }
   }
 
@@ -451,11 +574,25 @@ export default function PropuestaAsignacionPage() {
       },
     });
 
+    if (borradorId) {
+      await supabase
+        .from("propuestas_asignacion")
+        .update({
+          estado: "APLICADO",
+          aplicado_por: sessionData.session.user.id,
+          aplicado_at: new Date().toISOString(),
+          total_registros: asignacionesParaInsertar.length,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", borradorId);
+    }
+
     setMensaje(
       `Propuesta aplicada correctamente. Asignaciones creadas: ${asignacionesParaInsertar.length}.`
     );
 
     setPropuestas([]);
+    setBorradorId("");
     setAplicando(false);
   }
 
@@ -607,6 +744,61 @@ export default function PropuestaAsignacionPage() {
           </div>
         </div>
 
+        <div className="mt-8 rounded-2xl border border-slate-800 bg-slate-900 p-5">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="font-semibold text-cyan-300">
+                Borrador y aplicación de propuesta
+              </h2>
+
+              <p className="mt-2 text-sm text-slate-300">
+                Puedes guardar la propuesta como borrador, cargar el último
+                borrador o aplicar la propuesta revisada.
+              </p>
+
+              {borradorId ? (
+                <p className="mt-2 text-xs text-slate-500">
+                  Borrador activo: {borradorId}
+                </p>
+              ) : null}
+            </div>
+
+            <div className="flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={cargarUltimoBorrador}
+                disabled={cargandoBorrador || aplicando || generando}
+                className="rounded-xl border border-cyan-700 px-4 py-3 text-sm font-semibold text-cyan-300 hover:border-cyan-400 hover:text-cyan-200 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {cargandoBorrador ? "Cargando..." : "Cargar último borrador"}
+              </button>
+
+              <button
+                type="button"
+                onClick={guardarBorrador}
+                disabled={
+                  guardandoBorrador ||
+                  aplicando ||
+                  generando ||
+                  propuestas.length === 0
+                }
+                className="rounded-xl border border-amber-700 px-4 py-3 text-sm font-semibold text-amber-300 hover:border-amber-400 hover:text-amber-200 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {guardandoBorrador ? "Guardando..." : "Guardar borrador"}
+              </button>
+
+              <button
+                type="button"
+                onClick={aplicarPropuesta}
+                disabled={aplicando || generando || propuestas.length === 0}
+                className="rounded-xl bg-emerald-400 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {aplicando ? "Aplicando..." : "Aplicar propuesta"}
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div className="mt-8 rounded-2xl border border-emerald-800 bg-emerald-950/20 p-5">
           <h2 className="font-semibold text-emerald-300">
             Agregar manualmente a propuesta
@@ -622,6 +814,7 @@ export default function PropuestaAsignacionPage() {
               <label className="text-sm font-medium text-slate-300">
                 Cédula / búsqueda
               </label>
+
               <input
                 value={cedulaManual}
                 onChange={(event) => setCedulaManual(event.target.value)}
@@ -634,6 +827,7 @@ export default function PropuestaAsignacionPage() {
               <label className="text-sm font-medium text-slate-300">
                 Puesto
               </label>
+
               <select
                 value={puestoManual}
                 onChange={(event) => setPuestoManual(event.target.value)}
@@ -653,6 +847,7 @@ export default function PropuestaAsignacionPage() {
               <label className="text-sm font-medium text-slate-300">
                 Función
               </label>
+
               <input
                 value={funcionManual}
                 onChange={(event) => setFuncionManual(event.target.value)}
@@ -664,6 +859,7 @@ export default function PropuestaAsignacionPage() {
               <label className="text-sm font-medium text-slate-300">
                 Horario
               </label>
+
               <input
                 value={horarioManual}
                 onChange={(event) => setHorarioManual(event.target.value)}
@@ -676,6 +872,7 @@ export default function PropuestaAsignacionPage() {
               <label className="text-sm font-medium text-slate-300">
                 Observación
               </label>
+
               <input
                 value={observacionManual}
                 onChange={(event) => setObservacionManual(event.target.value)}
@@ -719,37 +916,12 @@ export default function PropuestaAsignacionPage() {
           </button>
         </div>
 
-        {propuestas.length > 0 ? (
-          <div className="mt-8 rounded-2xl border border-emerald-800 bg-emerald-950/20 p-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <h2 className="font-semibold text-emerald-300">
-                  Aplicar propuesta revisada
-                </h2>
-
-                <p className="mt-2 text-sm text-slate-300">
-                  Esta acción creará asignaciones reales con todas las filas de
-                  la propuesta actual.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={aplicarPropuesta}
-                disabled={aplicando || generando}
-                className="rounded-xl bg-emerald-400 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                {aplicando ? "Aplicando..." : "Aplicar propuesta"}
-              </button>
-            </div>
-          </div>
-        ) : null}
-
         <div className="mt-8 rounded-2xl border border-slate-800 bg-slate-900">
           <div className="border-b border-slate-800 px-5 py-4">
             <h2 className="font-semibold text-cyan-300">
               Afinación manual de propuesta
             </h2>
+
             <p className="mt-1 text-sm text-slate-400">
               Cambia el puesto, función, horario u observación antes de aplicar
               la propuesta.
