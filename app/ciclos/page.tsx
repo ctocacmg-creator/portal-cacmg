@@ -284,9 +284,14 @@ export default function CiclosPage() {
                   <div className="flex flex-col gap-4 border-b border-slate-800 pb-5 md:flex-row md:items-start md:justify-between">
                     <div>
                       <h2 className="text-xl font-bold text-cyan-300">
-                        {ciclo.mes ?? "-"} / {ciclo.grupo ?? "-"} /{" "}
-                        {ciclo.nombre_ciclo}
-                      </h2>
+  <a
+    href={`/ciclos/${ciclo.id}`}
+    className="hover:text-cyan-200"
+  >
+    {ciclo.mes ?? "-"} {ciclo.anio ?? ""} / {ciclo.grupo ?? "-"} /{" "}
+    {ciclo.nombre_ciclo}
+  </a>
+</h2>
 
                       <p className="mt-2 text-sm text-slate-400">
                         {ciclo.descripcion ??
