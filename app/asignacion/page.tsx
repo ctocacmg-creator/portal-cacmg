@@ -192,6 +192,13 @@ export default function AsignacionPage() {
   Disponibles
 </a>
 
+<a
+  href="/asignacion/propuesta"
+  className="rounded-xl border border-cyan-700 px-4 py-2 text-sm text-cyan-300 hover:border-cyan-400 hover:text-cyan-200"
+>
+  Propuesta automática
+</a>
+
             <a
               href="/dashboard"
               className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:border-cyan-400 hover:text-cyan-300"
