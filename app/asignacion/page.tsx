@@ -115,6 +115,13 @@ export default function AsignacionPage() {
   </a>
 
 <a
+  href="/asignacion/validar-ciclo"
+  className="rounded-xl border border-amber-700 px-4 py-2 text-sm text-amber-300 hover:border-amber-400 hover:text-amber-200"
+>
+  Validar ciclo
+</a>
+
+<a
   href="/asignacion/activas"
   className="rounded-xl border border-cyan-700 px-4 py-2 text-sm text-cyan-300 hover:border-cyan-400 hover:text-cyan-200"
 >
