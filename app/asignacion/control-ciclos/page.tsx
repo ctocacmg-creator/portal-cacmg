@@ -43,6 +43,7 @@ export default function ControlAsignacionCiclosPage() {
   const [filtroAlerta, setFiltroAlerta] = useState("");
   const [filtroGrupo, setFiltroGrupo] = useState("");
   const [filtroDistrito, setFiltroDistrito] = useState("");
+  const [exportando, setExportando] = useState(false);
 
   useEffect(() => {
     async function cargarControl() {
@@ -90,6 +91,40 @@ export default function ControlAsignacionCiclosPage() {
     cargarControl();
   }, []);
 
+  async function exportarControl() {
+    setExportando(true);
+    setMensaje("");
+
+    try {
+      const response = await fetch("/api/export/control-asignacion-ciclos", {
+        method: "POST",
+      });
+
+      const resultado = await response.json();
+
+      if (!response.ok || !resultado.ok) {
+        setMensaje(
+          `Error exportando control: ${
+            resultado.error ?? "Error desconocido"
+          }`
+        );
+        return;
+      }
+
+      setMensaje(
+        `Exportación completada. Registros exportados: ${resultado.total}.`
+      );
+    } catch (error) {
+      setMensaje(
+        error instanceof Error
+          ? `Error exportando control: ${error.message}`
+          : "Error exportando control."
+      );
+    } finally {
+      setExportando(false);
+    }
+  }
+
   const resumen = registros.reduce<Record<string, number>>((acc, registro) => {
     const clave = registro.alerta ?? "SIN_ALERTA";
     acc[clave] = (acc[clave] ?? 0) + 1;
@@ -115,7 +150,9 @@ export default function ControlAsignacionCiclosPage() {
   if (cargando) {
     return (
       <main className="flex min-h-screen items-center justify-center bg-slate-950 text-white">
-        <p className="text-slate-300">Cargando control de asignación contra ciclos...</p>
+        <p className="text-slate-300">
+          Cargando control de asignación contra ciclos...
+        </p>
       </main>
     );
   }
@@ -134,11 +171,21 @@ export default function ControlAsignacionCiclosPage() {
             </h1>
 
             <p className="mt-3 text-slate-400">
-              Detecta asignaciones activas realizadas en días de descanso, sin grupo o sin ciclo planificado.
+              Detecta asignaciones activas realizadas en días de descanso, sin
+              grupo o sin ciclo planificado.
             </p>
           </div>
 
           <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={exportarControl}
+              disabled={exportando}
+              className="rounded-xl border border-emerald-700 px-4 py-2 text-sm font-semibold text-emerald-300 hover:border-emerald-400 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {exportando ? "Exportando..." : "Exportar control"}
+            </button>
+
             <a
               href="/asignacion"
               className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:border-cyan-400 hover:text-cyan-300"
@@ -156,7 +203,7 @@ export default function ControlAsignacionCiclosPage() {
         </div>
 
         {mensaje ? (
-          <div className="mt-6 rounded-xl border border-red-900 bg-red-950/40 px-4 py-3 text-sm text-red-200">
+          <div className="mt-6 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-300">
             {mensaje}
           </div>
         ) : null}
