@@ -25,6 +25,8 @@ export default function CadPage() {
   const [mensaje, setMensaje] = useState("");
   const [filtroEstado, setFiltroEstado] = useState("");
   const [filtroDistrito, setFiltroDistrito] = useState("");
+  const [exportandoNovedades, setExportandoNovedades] = useState(false);
+  const [exportandoCompleto, setExportandoCompleto] = useState(false);
 
   useEffect(() => {
     async function cargarNovedades() {
@@ -71,6 +73,74 @@ export default function CadPage() {
     cargarNovedades();
   }, []);
 
+  async function exportarNovedades() {
+    setExportandoNovedades(true);
+    setMensaje("");
+
+    try {
+      const response = await fetch("/api/export/cad-novedades", {
+        method: "POST",
+      });
+
+      const resultado = await response.json();
+
+      if (!response.ok || !resultado.ok) {
+        setMensaje(
+          `Error exportando novedades CAD: ${
+            resultado.error ?? "Error desconocido"
+          }`
+        );
+        return;
+      }
+
+      setMensaje(
+        `Exportación completada. Novedades exportadas: ${resultado.total}.`
+      );
+    } catch (error) {
+      setMensaje(
+        error instanceof Error
+          ? `Error exportando novedades CAD: ${error.message}`
+          : "Error exportando novedades CAD."
+      );
+    } finally {
+      setExportandoNovedades(false);
+    }
+  }
+
+  async function exportarCadCompleto() {
+    setExportandoCompleto(true);
+    setMensaje("");
+
+    try {
+      const response = await fetch("/api/export/cad-completo", {
+        method: "POST",
+      });
+
+      const resultado = await response.json();
+
+      if (!response.ok || !resultado.ok) {
+        setMensaje(
+          `Error exportando CAD completo: ${
+            resultado.error ?? "Error desconocido"
+          }`
+        );
+        return;
+      }
+
+      setMensaje(
+        `Exportación completa CAD finalizada. Bitácora: ${resultado.bitacora}, apoyos: ${resultado.apoyos}, estado: ${resultado.estado}.`
+      );
+    } catch (error) {
+      setMensaje(
+        error instanceof Error
+          ? `Error exportando CAD completo: ${error.message}`
+          : "Error exportando CAD completo."
+      );
+    } finally {
+      setExportandoCompleto(false);
+    }
+  }
+
   const novedadesFiltradas = novedades.filter((novedad) => {
     const coincideEstado = (novedad.estado_novedad ?? "")
       .toLowerCase()
@@ -106,46 +176,72 @@ export default function CadPage() {
               Novedades operativas registradas en el módulo CAD.
             </p>
           </div>
-<a
-  href="/cad/estado"
-  className="rounded-xl border border-cyan-700 px-4 py-2 text-sm text-cyan-300 hover:border-cyan-400 hover:text-cyan-200"
->
-  Estado tiempo real
-</a>
-<a
-  href="/cad/apoyos"
-  className="rounded-xl border border-cyan-700 px-4 py-2 text-sm text-cyan-300 hover:border-cyan-400 hover:text-cyan-200"
->
-  Apoyos
-</a>
-<a
-  href="/cad/bitacora"
-  className="rounded-xl border border-cyan-700 px-4 py-2 text-sm text-cyan-300 hover:border-cyan-400 hover:text-cyan-200"
->
-  Bitácora
-</a>
-<a
-  href="/cad/nueva"
-  className="rounded-xl bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-300"
->
-  Nueva novedad
-</a>
-<a
-  href="/cad/control"
-  className="rounded-xl border border-amber-700 px-4 py-2 text-sm text-amber-300 hover:border-amber-400 hover:text-amber-200"
->
-  Control
-</a>
-          <a
-            href="/dashboard"
-            className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:border-cyan-400 hover:text-cyan-300"
-          >
-            Volver al dashboard
-          </a>
+
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={exportarNovedades}
+              disabled={exportandoNovedades}
+              className="rounded-xl border border-emerald-700 px-4 py-2 text-sm font-semibold text-emerald-300 hover:border-emerald-400 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {exportandoNovedades ? "Exportando..." : "Exportar novedades"}
+            </button>
+
+            <button
+              type="button"
+              onClick={exportarCadCompleto}
+              disabled={exportandoCompleto}
+              className="rounded-xl border border-emerald-700 px-4 py-2 text-sm font-semibold text-emerald-300 hover:border-emerald-400 hover:text-emerald-200 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {exportandoCompleto ? "Exportando..." : "Exportar CAD completo"}
+            </button>
+
+            <a
+              href="/cad/nueva"
+              className="rounded-xl bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-300"
+            >
+              Nueva novedad
+            </a>
+
+            <a
+              href="/cad/estado"
+              className="rounded-xl border border-cyan-700 px-4 py-2 text-sm text-cyan-300 hover:border-cyan-400 hover:text-cyan-200"
+            >
+              Estado tiempo real
+            </a>
+
+            <a
+              href="/cad/apoyos"
+              className="rounded-xl border border-cyan-700 px-4 py-2 text-sm text-cyan-300 hover:border-cyan-400 hover:text-cyan-200"
+            >
+              Apoyos
+            </a>
+
+            <a
+              href="/cad/bitacora"
+              className="rounded-xl border border-cyan-700 px-4 py-2 text-sm text-cyan-300 hover:border-cyan-400 hover:text-cyan-200"
+            >
+              Bitácora
+            </a>
+
+            <a
+              href="/cad/control"
+              className="rounded-xl border border-amber-700 px-4 py-2 text-sm text-amber-300 hover:border-amber-400 hover:text-amber-200"
+            >
+              Control
+            </a>
+
+            <a
+              href="/dashboard"
+              className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:border-cyan-400 hover:text-cyan-300"
+            >
+              Volver al dashboard
+            </a>
+          </div>
         </div>
 
         {mensaje ? (
-          <div className="mt-6 rounded-xl border border-red-900 bg-red-950/40 px-4 py-3 text-sm text-red-200">
+          <div className="mt-6 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-300">
             {mensaje}
           </div>
         ) : null}
@@ -210,39 +306,48 @@ export default function CadPage() {
                   {novedadesFiltradas.map((novedad) => (
                     <tr key={novedad.id} className="border-t border-slate-800">
                       <td className="px-4 py-3 font-medium">
-  <a
-    href={`/cad/novedad/${novedad.id}`}
-    className="text-cyan-300 hover:text-cyan-200"
-  >
-    {novedad.id_novedad ?? "Ver detalle"}
-  </a>
-</td>
+                        <a
+                          href={`/cad/novedad/${novedad.id}`}
+                          className="text-cyan-300 hover:text-cyan-200"
+                        >
+                          {novedad.id_novedad ?? "Ver detalle"}
+                        </a>
+                      </td>
+
                       <td className="px-4 py-3 text-slate-300">
                         {novedad.fecha}
                       </td>
+
                       <td className="px-4 py-3 text-slate-300">
                         {novedad.hora ?? "-"}
                       </td>
+
                       <td className="px-4 py-3 text-slate-300">
                         {novedad.tipo_novedad ?? "-"}
                       </td>
+
                       <td className="px-4 py-3 text-slate-300">
                         {novedad.prioridad ?? "-"}
                       </td>
+
                       <td className="px-4 py-3 text-slate-300">
                         {novedad.distrito ?? "-"}
                       </td>
+
                       <td className="px-4 py-3 text-slate-300">
                         {novedad.id_puesto ?? "-"}
                       </td>
+
                       <td className="px-4 py-3 text-slate-300">
                         {novedad.nombre_reporta ??
                           novedad.cedula_reporta ??
                           "-"}
                       </td>
+
                       <td className="max-w-xl px-4 py-3 text-slate-300">
                         {novedad.descripcion ?? "-"}
                       </td>
+
                       <td className="px-4 py-3">
                         <span className="rounded-full bg-cyan-400/10 px-3 py-1 text-xs font-semibold text-cyan-300">
                           {novedad.estado_novedad ?? "SIN ESTADO"}
