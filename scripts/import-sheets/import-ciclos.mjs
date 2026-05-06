@@ -44,6 +44,56 @@ function buscarColumna(headers, posiblesNombres) {
   return -1;
 }
 
+function obtenerNumeroMes(mesTexto) {
+  const texto = normalizarTexto(mesTexto).toUpperCase();
+
+  const meses = {
+    ENERO: 1,
+    FEBRERO: 2,
+    MARZO: 3,
+    ABRIL: 4,
+    MAYO: 5,
+    JUNIO: 6,
+    JULIO: 7,
+    AGOSTO: 8,
+    SEPTIEMBRE: 9,
+    SETIEMBRE: 9,
+    OCTUBRE: 10,
+    NOVIEMBRE: 11,
+    DICIEMBRE: 12,
+  };
+
+  for (const [nombre, numero] of Object.entries(meses)) {
+    if (texto.includes(nombre)) {
+      return numero;
+    }
+  }
+
+  return null;
+}
+
+function obtenerAnio(mesTexto) {
+  const texto = normalizarTexto(mesTexto);
+  const match = texto.match(/\b(20\d{2})\b/);
+
+  if (match) {
+    return Number(match[1]);
+  }
+
+  return 2026;
+}
+
+function obtenerDiasDelMes(mesTexto) {
+  const numeroMes = obtenerNumeroMes(mesTexto);
+  const anio = obtenerAnio(mesTexto);
+
+  if (!numeroMes) {
+    return 31;
+  }
+
+  return new Date(anio, numeroMes, 0).getDate();
+}
+
 async function importarCiclos() {
   const range = "CICLOS!A:AZ";
 
@@ -64,12 +114,14 @@ async function importarCiclos() {
   const idxCiclo = buscarColumna(headers, ["CICLO"]);
   const idxMes = buscarColumna(headers, ["MES"]);
   const idxGrupo = buscarColumna(headers, ["GRUPO"]);
+
   const idxDiasTrabajo = buscarColumna(headers, [
     "DIAS TRABAJO",
     "DÍAS TRABAJO",
     "DIAS_TRABAJO",
     "DÍAS_TRABAJO",
   ]);
+
   const idxDiasDescanso = buscarColumna(headers, [
     "DIAS DESCANSO",
     "DÍAS DESCANSO",
@@ -79,13 +131,20 @@ async function importarCiclos() {
 
   if (idxCiclo === -1 || idxMes === -1 || idxGrupo === -1) {
     console.log("Encabezados encontrados:", headers);
-    throw new Error("No se encontraron columnas obligatorias: CICLO, Mes, Grupo.");
+    throw new Error(
+      "No se encontraron columnas obligatorias: CICLO, Mes, Grupo."
+    );
   }
 
   const columnasDias = [];
 
   for (let dia = 1; dia <= 31; dia++) {
-    const idxDia = buscarColumna(headers, [`DIA ${dia}`, `DÍA ${dia}`, `DIA_${dia}`, `DÍA_${dia}`]);
+    const idxDia = buscarColumna(headers, [
+      `DIA ${dia}`,
+      `DÍA ${dia}`,
+      `DIA_${dia}`,
+      `DÍA_${dia}`,
+    ]);
 
     if (idxDia >= 0) {
       columnasDias.push({
@@ -104,9 +163,14 @@ async function importarCiclos() {
 
     if (!ciclo || !mes || !grupo) continue;
 
+    const anio = obtenerAnio(mes);
+    const mesNumero = obtenerNumeroMes(mes);
+    const diasDelMes = obtenerDiasDelMes(mes);
     const diasPlan = {};
 
     for (const columna of columnasDias) {
+      if (columna.dia > diasDelMes) continue;
+
       const valor = normalizarTexto(row[columna.index]).toUpperCase();
 
       if (valor) {
@@ -117,6 +181,8 @@ async function importarCiclos() {
     ciclos.push({
       nombre_ciclo: ciclo,
       tipo_ciclo: ciclo,
+      anio,
+      mes_numero: mesNumero,
       mes,
       grupo,
       dias_plan: diasPlan,
@@ -124,7 +190,7 @@ async function importarCiclos() {
         idxDiasTrabajo >= 0 ? normalizarNumero(row[idxDiasTrabajo]) : null,
       dias_descanso:
         idxDiasDescanso >= 0 ? normalizarNumero(row[idxDiasDescanso]) : null,
-      descripcion: `Ciclo ${ciclo} - ${mes} - ${grupo}`,
+      descripcion: `Ciclo ${ciclo} - ${mes} ${anio} - ${grupo}`,
       estado: "ACTIVO",
     });
   }
