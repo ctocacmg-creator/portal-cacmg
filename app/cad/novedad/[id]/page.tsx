@@ -58,6 +58,8 @@ export default function DetalleNovedadCadPage() {
   const [cargando, setCargando] = useState(true);
   const [mensaje, setMensaje] = useState("");
   const [cerrando, setCerrando] = useState(false);
+  const [comentario, setComentario] = useState("");
+  const [guardandoComentario, setGuardandoComentario] = useState(false);
 
   async function cerrarNovedad() {
     if (!novedad) return;
@@ -153,6 +155,96 @@ export default function DetalleNovedadCadPage() {
 
     setMensaje("Novedad cerrada correctamente.");
     setCerrando(false);
+  }
+
+  async function agregarComentario() {
+    if (!novedad) return;
+
+    const comentarioLimpio = comentario.trim();
+
+    if (!comentarioLimpio) {
+      setMensaje("Escribe un comentario antes de guardar.");
+      return;
+    }
+
+    setGuardandoComentario(true);
+    setMensaje("");
+
+    const ahora = new Date();
+    const { data: sessionData } = await supabase.auth.getSession();
+
+    const { error: errorBitacora } = await supabase
+      .from("cad_bitacora_novedades")
+      .insert({
+        novedad_id: novedad.id,
+        accion: "COMENTARIO_AGREGADO",
+        estado_anterior: novedad.estado_novedad,
+        estado_nuevo: novedad.estado_novedad,
+        comentario: comentarioLimpio,
+        registrado_por: sessionData.session?.user.id ?? null,
+      });
+
+    if (errorBitacora) {
+      setMensaje(`Error al guardar comentario: ${errorBitacora.message}`);
+      setGuardandoComentario(false);
+      return;
+    }
+
+    const { error: errorUpdate } = await supabase
+      .from("cad_novedades")
+      .update({
+        accion_tomada: comentarioLimpio,
+        updated_at: ahora.toISOString(),
+      })
+      .eq("id", novedad.id);
+
+    if (errorUpdate) {
+      setMensaje(
+        `El comentario se guardó en bitácora, pero no se pudo actualizar la acción tomada: ${errorUpdate.message}`
+      );
+      setGuardandoComentario(false);
+      return;
+    }
+
+    const { error: errorAuditoria } = await supabase.from("auditoria").insert({
+      modulo: "CAD",
+      accion: "COMENTARIO_NOVEDAD",
+      usuario_id: sessionData.session?.user.id ?? null,
+      cedula: novedad.cedula_reporta,
+      detalle: {
+        id_novedad: novedad.id_novedad,
+        comentario: comentarioLimpio,
+      },
+    });
+
+    if (errorAuditoria) {
+      setMensaje(
+        `El comentario se guardó, pero falló el registro de auditoría: ${errorAuditoria.message}`
+      );
+      setGuardandoComentario(false);
+      return;
+    }
+
+    setNovedad({
+      ...novedad,
+      accion_tomada: comentarioLimpio,
+    });
+
+    setBitacora((actual) => [
+      {
+        id: crypto.randomUUID(),
+        accion: "COMENTARIO_AGREGADO",
+        estado_anterior: novedad.estado_novedad,
+        estado_nuevo: novedad.estado_novedad,
+        comentario: comentarioLimpio,
+        created_at: ahora.toISOString(),
+      },
+      ...actual,
+    ]);
+
+    setComentario("");
+    setMensaje("Comentario agregado correctamente.");
+    setGuardandoComentario(false);
   }
 
   useEffect(() => {
@@ -357,6 +449,31 @@ export default function DetalleNovedadCadPage() {
               {novedad.accion_tomada ?? "-"}
             </p>
           </div>
+        </div>
+
+        <div className="mt-8 rounded-2xl border border-slate-800 bg-slate-900 p-6">
+          <h2 className="font-semibold text-cyan-300">Agregar actualización</h2>
+
+          <p className="mt-2 text-sm text-slate-400">
+            Registra una acción, seguimiento o comentario operativo sobre esta
+            novedad.
+          </p>
+
+          <textarea
+            value={comentario}
+            onChange={(event) => setComentario(event.target.value)}
+            className="mt-5 min-h-28 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-400"
+            placeholder="Escribe la actualización de la novedad..."
+          />
+
+          <button
+            type="button"
+            onClick={agregarComentario}
+            disabled={guardandoComentario}
+            className="mt-4 rounded-xl bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {guardandoComentario ? "Guardando..." : "Guardar actualización"}
+          </button>
         </div>
 
         <div className="mt-8 grid gap-8 lg:grid-cols-2">
