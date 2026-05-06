@@ -198,8 +198,13 @@ export default function CadPage() {
                   {novedadesFiltradas.map((novedad) => (
                     <tr key={novedad.id} className="border-t border-slate-800">
                       <td className="px-4 py-3 font-medium">
-                        {novedad.id_novedad ?? "-"}
-                      </td>
+  <a
+    href={`/cad/novedad/${novedad.id}`}
+    className="text-cyan-300 hover:text-cyan-200"
+  >
+    {novedad.id_novedad ?? "Ver detalle"}
+  </a>
+</td>
                       <td className="px-4 py-3 text-slate-300">
                         {novedad.fecha}
                       </td>
