@@ -191,6 +191,14 @@ export default function AsignacionPage() {
             >
               Volver al dashboard
             </a>
+
+<a
+  href="/asignacion/ajustes"
+  className="rounded-xl border border-cyan-700 px-4 py-2 text-sm text-cyan-300 hover:border-cyan-400 hover:text-cyan-200"
+>
+  Ajustes
+</a>
+
           </div>
         </div>
 
