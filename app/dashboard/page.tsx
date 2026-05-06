@@ -69,6 +69,11 @@ export default function DashboardPage() {
     "Consulta del personal actualmente asignado a puestos operativos.",
     "/asignacion/activas",
   ],
+[
+  "Ciclos",
+  "Cronograma base, turnos y ciclos de trabajo operativo.",
+  "/ciclos",
+],
   [
     "Auditoría",
     "Trazabilidad de acciones, usuarios y cambios relevantes.",
