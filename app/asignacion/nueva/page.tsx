@@ -17,6 +17,28 @@ type Puesto = {
   distrito: string;
 };
 
+type ResultadoCiclo = {
+  grupo: string;
+  fecha: string;
+  anio: number;
+  mes_numero: number;
+  dia: number;
+  nombre_ciclo: string;
+  estado_dia: string | null;
+};
+
+function normalizarEstadoCiclo(valor: string | null) {
+  const texto = String(valor ?? "").toUpperCase().trim();
+
+  if (texto === "X") return "TRABAJO";
+  if (texto === "T") return "TRABAJO";
+  if (texto === "D") return "DESCANSO";
+  if (texto.includes("TRABAJO")) return "TRABAJO";
+  if (texto.includes("DESCANSO")) return "DESCANSO";
+
+  return texto || "SIN PLANIFICACIÓN";
+}
+
 export default function NuevaAsignacionPage() {
   const [cedula, setCedula] = useState("");
   const [idPuesto, setIdPuesto] = useState("");
@@ -26,6 +48,95 @@ export default function NuevaAsignacionPage() {
   const [observacion, setObservacion] = useState("");
   const [mensaje, setMensaje] = useState("");
   const [cargando, setCargando] = useState(false);
+  const [estadoCiclo, setEstadoCiclo] = useState("");
+  const [validandoCiclo, setValidandoCiclo] = useState(false);
+
+  async function obtenerPersonaPorCedula(cedulaLimpia: string) {
+    const { data, error } = await supabase
+      .from("personas")
+      .select("id, cedula, nombres, grupo, area")
+      .eq("cedula", cedulaLimpia)
+      .single<Persona>();
+
+    return { persona: data, error };
+  }
+
+  async function consultarEstadoCiclo(grupo: string | null, fecha: string) {
+    if (!grupo || !fecha) {
+      return {
+        resultado: null,
+        error: null,
+        mensaje:
+          "No se puede validar ciclo porque falta grupo o fecha de inicio.",
+      };
+    }
+
+    const { data, error } = await supabase.rpc("fn_estado_grupo_en_fecha", {
+      p_grupo: grupo,
+      p_fecha: fecha,
+    });
+
+    if (error) {
+      return {
+        resultado: null,
+        error,
+        mensaje: `Error validando ciclo: ${error.message}`,
+      };
+    }
+
+    const resultado = (data?.[0] ?? null) as ResultadoCiclo | null;
+
+    if (!resultado) {
+      return {
+        resultado: null,
+        error: null,
+        mensaje: "No se encontró planificación para ese grupo y fecha.",
+      };
+    }
+
+    return {
+      resultado,
+      error: null,
+      mensaje: `Grupo ${resultado.grupo} / ${resultado.fecha}: ${normalizarEstadoCiclo(
+        resultado.estado_dia
+      )}`,
+    };
+  }
+
+  async function validarCicloGrupo() {
+    const cedulaLimpia = cedula.trim();
+
+    if (!cedulaLimpia || !fechaInicio) {
+      setEstadoCiclo(
+        "Ingresa la cédula y la fecha de inicio para validar el ciclo."
+      );
+      return;
+    }
+
+    setValidandoCiclo(true);
+    setEstadoCiclo("");
+
+    const { persona, error } = await obtenerPersonaPorCedula(cedulaLimpia);
+
+    if (error || !persona) {
+      setEstadoCiclo("No se encontró una persona con esa cédula.");
+      setValidandoCiclo(false);
+      return;
+    }
+
+    if (!persona.grupo) {
+      setEstadoCiclo(
+        "La persona no tiene grupo registrado en la nómina. No se puede validar ciclo."
+      );
+      setValidandoCiclo(false);
+      return;
+    }
+
+    const consulta = await consultarEstadoCiclo(persona.grupo, fechaInicio);
+
+    setEstadoCiclo(consulta.mensaje);
+    setValidandoCiclo(false);
+  }
 
   async function crearAsignacion(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -42,11 +153,8 @@ export default function NuevaAsignacionPage() {
     const cedulaLimpia = cedula.trim();
     const idPuestoLimpio = idPuesto.trim().toUpperCase();
 
-    const { data: persona, error: errorPersona } = await supabase
-      .from("personas")
-      .select("id, cedula, nombres, grupo, area")
-      .eq("cedula", cedulaLimpia)
-      .single<Persona>();
+    const { persona, error: errorPersona } =
+      await obtenerPersonaPorCedula(cedulaLimpia);
 
     if (errorPersona || !persona) {
       setMensaje("No se encontró una persona con esa cédula.");
@@ -66,65 +174,106 @@ export default function NuevaAsignacionPage() {
       return;
     }
 
-const { data: ausentismoActivo, error: errorAusentismo } = await supabase
-  .from("ausentismos")
-  .select("id, tipo_ausentismo, fecha_inicio, fecha_fin")
-  .eq("cedula", cedulaLimpia)
-  .eq("estado", "ACTIVO")
-  .lte("fecha_inicio", fechaInicio)
-  .gte("fecha_fin", fechaInicio)
-  .maybeSingle();
+    if (persona.grupo) {
+      const consultaCiclo = await consultarEstadoCiclo(
+        persona.grupo,
+        fechaInicio
+      );
 
-const { data: condicionEspecial, error: errorCondicion } = await supabase
-  .from("condiciones_especiales")
-  .select(
-    "id, tipo_condicion, fecha_inicio, fecha_fin, puede_operativo, restriccion_operativa"
-  )
-  .eq("cedula", cedulaLimpia)
-  .eq("estado", "ACTIVO")
-  .lte("fecha_inicio", fechaInicio)
-  .or(`fecha_fin.is.null,fecha_fin.gte.${fechaInicio}`)
-  .maybeSingle();
+      if (consultaCiclo.error) {
+        setMensaje(consultaCiclo.mensaje);
+        setCargando(false);
+        return;
+      }
 
-if (errorCondicion) {
-  setMensaje(`Error validando condiciones especiales: ${errorCondicion.message}`);
-  setCargando(false);
-  return;
-}
+      if (consultaCiclo.resultado) {
+        const estadoNormalizado = normalizarEstadoCiclo(
+          consultaCiclo.resultado.estado_dia
+        );
 
-if (condicionEspecial?.puede_operativo === "NO") {
-  setMensaje(
-    `No se puede asignar. El agente tiene condición especial bloqueante: ${condicionEspecial.tipo_condicion}.`
-  );
-  setCargando(false);
-  return;
-}
+        setEstadoCiclo(consultaCiclo.mensaje);
 
-if (condicionEspecial?.puede_operativo === "RESTRINGIDO") {
-  const confirmar = window.confirm(
-    `El agente tiene condición especial RESTRINGIDA: ${condicionEspecial.tipo_condicion}. Restricción: ${condicionEspecial.restriccion_operativa ?? "Sin detalle"}. ¿Desea continuar con la asignación?`
-  );
+        if (estadoNormalizado === "DESCANSO") {
+          const confirmar = window.confirm(
+            `El agente pertenece al grupo ${persona.grupo} y para la fecha ${fechaInicio} figura como DESCANSO. ¿Deseas continuar con la asignación?`
+          );
 
-  if (!confirmar) {
-    setMensaje("Asignación cancelada por condición especial restringida.");
-    setCargando(false);
-    return;
-  }
-}
+          if (!confirmar) {
+            setMensaje("Asignación cancelada por ciclo en descanso.");
+            setCargando(false);
+            return;
+          }
+        }
+      } else {
+        setEstadoCiclo(consultaCiclo.mensaje);
+      }
+    }
 
-if (errorAusentismo) {
-  setMensaje(`Error validando ausentismos: ${errorAusentismo.message}`);
-  setCargando(false);
-  return;
-}
+    const { data: ausentismoActivo, error: errorAusentismo } = await supabase
+      .from("ausentismos")
+      .select("id, tipo_ausentismo, fecha_inicio, fecha_fin")
+      .eq("cedula", cedulaLimpia)
+      .eq("estado", "ACTIVO")
+      .lte("fecha_inicio", fechaInicio)
+      .gte("fecha_fin", fechaInicio)
+      .maybeSingle();
 
-if (ausentismoActivo) {
-  setMensaje(
-    `No se puede asignar. El agente tiene ausentismo activo: ${ausentismoActivo.tipo_ausentismo} del ${ausentismoActivo.fecha_inicio} al ${ausentismoActivo.fecha_fin}.`
-  );
-  setCargando(false);
-  return;
-}
+    if (errorAusentismo) {
+      setMensaje(`Error validando ausentismos: ${errorAusentismo.message}`);
+      setCargando(false);
+      return;
+    }
+
+    if (ausentismoActivo) {
+      setMensaje(
+        `No se puede asignar. El agente tiene ausentismo activo: ${ausentismoActivo.tipo_ausentismo} del ${ausentismoActivo.fecha_inicio} al ${ausentismoActivo.fecha_fin}.`
+      );
+      setCargando(false);
+      return;
+    }
+
+    const { data: condicionEspecial, error: errorCondicion } = await supabase
+      .from("condiciones_especiales")
+      .select(
+        "id, tipo_condicion, fecha_inicio, fecha_fin, puede_operativo, restriccion_operativa"
+      )
+      .eq("cedula", cedulaLimpia)
+      .eq("estado", "ACTIVO")
+      .lte("fecha_inicio", fechaInicio)
+      .or(`fecha_fin.is.null,fecha_fin.gte.${fechaInicio}`)
+      .maybeSingle();
+
+    if (errorCondicion) {
+      setMensaje(
+        `Error validando condiciones especiales: ${errorCondicion.message}`
+      );
+      setCargando(false);
+      return;
+    }
+
+    if (condicionEspecial?.puede_operativo === "NO") {
+      setMensaje(
+        `No se puede asignar. El agente tiene condición especial bloqueante: ${condicionEspecial.tipo_condicion}.`
+      );
+      setCargando(false);
+      return;
+    }
+
+    if (condicionEspecial?.puede_operativo === "RESTRINGIDO") {
+      const confirmar = window.confirm(
+        `El agente tiene condición especial RESTRINGIDA: ${
+          condicionEspecial.tipo_condicion
+        }. Restricción: ${
+          condicionEspecial.restriccion_operativa ?? "Sin detalle"
+        }. ¿Desea continuar con la asignación?`
+      );
+
+      if (!confirmar) {
+        setMensaje("Asignación cancelada por condición especial restringida.");
+        setCargando(false);
+        return;
+      }
+    }
 
     const { data: asignacionActiva } = await supabase
       .from("asignaciones")
@@ -162,25 +311,29 @@ if (ausentismoActivo) {
       return;
     }
 
-await supabase.from("auditoria").insert({
-  modulo: "ASIGNACION",
-  accion: "ASIGNACION_CREADA",
-  usuario_id: sessionData.session.user.id,
-  cedula: persona.cedula,
-  detalle: {
-    id_puesto: puesto.id_puesto,
-    fecha_inicio: fechaInicio,
-    funcion: funcion.trim().toUpperCase() || null,
-    horario: horario.trim().toUpperCase() || null,
-  },
-});
+    await supabase.from("auditoria").insert({
+      modulo: "ASIGNACION",
+      accion: "ASIGNACION_CREADA",
+      usuario_id: sessionData.session.user.id,
+      cedula: persona.cedula,
+      detalle: {
+        id_puesto: puesto.id_puesto,
+        grupo: persona.grupo,
+        fecha_inicio: fechaInicio,
+        funcion: funcion.trim().toUpperCase() || null,
+        horario: horario.trim().toUpperCase() || null,
+        validacion_ciclo: estadoCiclo || null,
+      },
+    });
 
     setMensaje("Asignación creada correctamente.");
     setCedula("");
     setIdPuesto("");
+    setFechaInicio("");
     setFuncion("");
     setHorario("");
     setObservacion("");
+    setEstadoCiclo("");
     setCargando(false);
   }
 
@@ -243,6 +396,34 @@ await supabase.from("auditoria").insert({
                 onChange={(event) => setFechaInicio(event.target.value)}
                 className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-400"
               />
+            </div>
+
+            <div className="rounded-2xl border border-amber-800 bg-amber-950/20 p-4">
+              <p className="text-sm font-semibold text-amber-300">
+                Validación de ciclo
+              </p>
+
+              <p className="mt-2 text-sm text-slate-400">
+                Usa la cédula para consultar el grupo del agente y validar si en
+                la fecha seleccionada está en trabajo o descanso.
+              </p>
+
+              <button
+                type="button"
+                onClick={validarCicloGrupo}
+                disabled={validandoCiclo}
+                className="mt-4 rounded-xl border border-amber-700 px-4 py-2 text-sm font-semibold text-amber-300 hover:border-amber-400 hover:text-amber-200 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {validandoCiclo
+                  ? "Validando ciclo..."
+                  : "Validar ciclo del agente"}
+              </button>
+
+              {estadoCiclo ? (
+                <div className="mt-3 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-300">
+                  {estadoCiclo}
+                </div>
+              ) : null}
             </div>
 
             <div>
