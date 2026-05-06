@@ -7,8 +7,11 @@ type CicloTrabajo = {
   id: string;
   nombre_ciclo: string;
   tipo_ciclo: string | null;
+  mes: string | null;
+  grupo: string | null;
   dias_trabajo: number | null;
   dias_descanso: number | null;
+  dias_plan: Record<string, string> | null;
   descripcion: string | null;
   estado: string | null;
   created_at: string;
@@ -20,6 +23,8 @@ export default function CiclosPage() {
   const [mensaje, setMensaje] = useState("");
   const [filtroNombre, setFiltroNombre] = useState("");
   const [filtroTipo, setFiltroTipo] = useState("");
+  const [filtroMes, setFiltroMes] = useState("");
+  const [filtroGrupo, setFiltroGrupo] = useState("");
 
   useEffect(() => {
     async function cargarCiclos() {
@@ -33,8 +38,10 @@ export default function CiclosPage() {
       const { data, error } = await supabase
         .from("ciclos_trabajo")
         .select(
-          "id, nombre_ciclo, tipo_ciclo, dias_trabajo, dias_descanso, descripcion, estado, created_at"
+          "id, nombre_ciclo, tipo_ciclo, mes, grupo, dias_trabajo, dias_descanso, dias_plan, descripcion, estado, created_at"
         )
+        .order("mes", { ascending: true })
+        .order("grupo", { ascending: true })
         .order("nombre_ciclo", { ascending: true });
 
       if (error) {
@@ -59,7 +66,15 @@ export default function CiclosPage() {
       .toLowerCase()
       .includes(filtroTipo.toLowerCase().trim());
 
-    return coincideNombre && coincideTipo;
+    const coincideMes = (ciclo.mes ?? "")
+      .toLowerCase()
+      .includes(filtroMes.toLowerCase().trim());
+
+    const coincideGrupo = (ciclo.grupo ?? "")
+      .toLowerCase()
+      .includes(filtroGrupo.toLowerCase().trim());
+
+    return coincideNombre && coincideTipo && coincideMes && coincideGrupo;
   });
 
   if (cargando) {
@@ -82,7 +97,8 @@ export default function CiclosPage() {
             <h1 className="mt-4 text-3xl font-bold">Ciclos de trabajo</h1>
 
             <p className="mt-3 text-slate-400">
-              Cronograma base y ciclos operativos importados desde Google Sheets.
+              Cronograma base y ciclos operativos importados desde Google
+              Sheets.
             </p>
           </div>
 
@@ -100,7 +116,7 @@ export default function CiclosPage() {
           </div>
         ) : null}
 
-        <div className="mt-8 grid gap-4 rounded-2xl border border-slate-800 bg-slate-900 p-5 md:grid-cols-2">
+        <div className="mt-8 grid gap-4 rounded-2xl border border-slate-800 bg-slate-900 p-5 md:grid-cols-4">
           <div>
             <label className="text-sm font-medium text-slate-300">
               Filtrar por ciclo
@@ -108,7 +124,7 @@ export default function CiclosPage() {
             <input
               value={filtroNombre}
               onChange={(event) => setFiltroNombre(event.target.value)}
-              placeholder="Ej: G1, ciclo, turno..."
+              placeholder="Ej: 12-2, 5-2..."
               className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-400"
             />
           </div>
@@ -121,6 +137,30 @@ export default function CiclosPage() {
               value={filtroTipo}
               onChange={(event) => setFiltroTipo(event.target.value)}
               placeholder="Ej: 12-2, 5-2"
+              className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-400"
+            />
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-slate-300">
+              Filtrar por mes
+            </label>
+            <input
+              value={filtroMes}
+              onChange={(event) => setFiltroMes(event.target.value)}
+              placeholder="Ej: MARZO, ABRIL"
+              className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-400"
+            />
+          </div>
+
+          <div>
+            <label className="text-sm font-medium text-slate-300">
+              Filtrar por grupo
+            </label>
+            <input
+              value={filtroGrupo}
+              onChange={(event) => setFiltroGrupo(event.target.value)}
+              placeholder="Ej: G1, G2, G3"
               className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-400"
             />
           </div>
@@ -144,10 +184,13 @@ export default function CiclosPage() {
                 <thead className="bg-slate-950 text-slate-300">
                   <tr>
                     <th className="px-4 py-3">Ciclo</th>
+                    <th className="px-4 py-3">Mes</th>
+                    <th className="px-4 py-3">Grupo</th>
                     <th className="px-4 py-3">Tipo</th>
                     <th className="px-4 py-3">Días trabajo</th>
                     <th className="px-4 py-3">Días descanso</th>
                     <th className="px-4 py-3">Estado</th>
+                    <th className="px-4 py-3">Plan días</th>
                     <th className="px-4 py-3">Descripción</th>
                   </tr>
                 </thead>
@@ -158,20 +201,41 @@ export default function CiclosPage() {
                       <td className="px-4 py-3 font-medium text-cyan-300">
                         {ciclo.nombre_ciclo}
                       </td>
+
+                      <td className="px-4 py-3 text-slate-300">
+                        {ciclo.mes ?? "-"}
+                      </td>
+
+                      <td className="px-4 py-3 text-slate-300">
+                        {ciclo.grupo ?? "-"}
+                      </td>
+
                       <td className="px-4 py-3 text-slate-300">
                         {ciclo.tipo_ciclo ?? "-"}
                       </td>
+
                       <td className="px-4 py-3 text-slate-300">
                         {ciclo.dias_trabajo ?? "-"}
                       </td>
+
                       <td className="px-4 py-3 text-slate-300">
                         {ciclo.dias_descanso ?? "-"}
                       </td>
+
                       <td className="px-4 py-3">
                         <span className="rounded-full bg-cyan-400/10 px-3 py-1 text-xs font-semibold text-cyan-300">
                           {ciclo.estado ?? "SIN ESTADO"}
                         </span>
                       </td>
+
+                      <td className="max-w-md px-4 py-3 text-xs text-slate-400">
+                        {ciclo.dias_plan
+                          ? Object.entries(ciclo.dias_plan)
+                              .map(([dia, valor]) => `${dia}: ${valor}`)
+                              .join(" | ")
+                          : "-"}
+                      </td>
+
                       <td className="max-w-xl px-4 py-3 text-slate-300">
                         {ciclo.descripcion ?? "-"}
                       </td>

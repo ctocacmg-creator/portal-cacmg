@@ -45,7 +45,7 @@ function buscarColumna(headers, posiblesNombres) {
 }
 
 async function importarCiclos() {
-  const range = "CICLOS!A:Z";
+  const range = "CICLOS!A:AZ";
 
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId,
@@ -61,71 +61,71 @@ async function importarCiclos() {
 
   const headers = rows[0];
 
-  const idxNombre = buscarColumna(headers, [
-    "NOMBRE_CICLO",
-    "NOMBRE CICLO",
-    "CICLO",
-    "NOMBRE",
-  ]);
-
-  const idxTipo = buscarColumna(headers, [
-    "TIPO_CICLO",
-    "TIPO CICLO",
-    "TIPO",
-  ]);
-
+  const idxCiclo = buscarColumna(headers, ["CICLO"]);
+  const idxMes = buscarColumna(headers, ["MES"]);
+  const idxGrupo = buscarColumna(headers, ["GRUPO"]);
   const idxDiasTrabajo = buscarColumna(headers, [
-    "DIAS_TRABAJO",
-    "DÍAS_TRABAJO",
     "DIAS TRABAJO",
     "DÍAS TRABAJO",
-    "TRABAJO",
+    "DIAS_TRABAJO",
+    "DÍAS_TRABAJO",
   ]);
-
   const idxDiasDescanso = buscarColumna(headers, [
-    "DIAS_DESCANSO",
-    "DÍAS_DESCANSO",
     "DIAS DESCANSO",
     "DÍAS DESCANSO",
-    "DESCANSO",
+    "DIAS_DESCANSO",
+    "DÍAS_DESCANSO",
   ]);
 
-  const idxDescripcion = buscarColumna(headers, [
-    "DESCRIPCION",
-    "DESCRIPCIÓN",
-    "DETALLE",
-    "OBSERVACION",
-    "OBSERVACIÓN",
-  ]);
-
-  const idxEstado = buscarColumna(headers, ["ESTADO"]);
-
-  if (idxNombre === -1) {
+  if (idxCiclo === -1 || idxMes === -1 || idxGrupo === -1) {
     console.log("Encabezados encontrados:", headers);
-    throw new Error("No se encontró columna obligatoria: NOMBRE_CICLO / CICLO.");
+    throw new Error("No se encontraron columnas obligatorias: CICLO, Mes, Grupo.");
+  }
+
+  const columnasDias = [];
+
+  for (let dia = 1; dia <= 31; dia++) {
+    const idxDia = buscarColumna(headers, [`DIA ${dia}`, `DÍA ${dia}`, `DIA_${dia}`, `DÍA_${dia}`]);
+
+    if (idxDia >= 0) {
+      columnasDias.push({
+        dia,
+        index: idxDia,
+      });
+    }
   }
 
   const ciclos = [];
 
   for (const row of rows.slice(1)) {
-    const nombreCiclo = normalizarTexto(row[idxNombre]).toUpperCase();
+    const ciclo = normalizarTexto(row[idxCiclo]).toUpperCase();
+    const mes = normalizarTexto(row[idxMes]).toUpperCase();
+    const grupo = normalizarTexto(row[idxGrupo]).toUpperCase();
 
-    if (!nombreCiclo) continue;
+    if (!ciclo || !mes || !grupo) continue;
+
+    const diasPlan = {};
+
+    for (const columna of columnasDias) {
+      const valor = normalizarTexto(row[columna.index]).toUpperCase();
+
+      if (valor) {
+        diasPlan[`dia_${columna.dia}`] = valor;
+      }
+    }
 
     ciclos.push({
-      nombre_ciclo: nombreCiclo,
-      tipo_ciclo:
-        idxTipo >= 0 ? normalizarTexto(row[idxTipo]).toUpperCase() || null : null,
+      nombre_ciclo: ciclo,
+      tipo_ciclo: ciclo,
+      mes,
+      grupo,
+      dias_plan: diasPlan,
       dias_trabajo:
         idxDiasTrabajo >= 0 ? normalizarNumero(row[idxDiasTrabajo]) : null,
       dias_descanso:
         idxDiasDescanso >= 0 ? normalizarNumero(row[idxDiasDescanso]) : null,
-      descripcion:
-        idxDescripcion >= 0 ? normalizarTexto(row[idxDescripcion]) || null : null,
-      estado:
-        idxEstado >= 0 && normalizarTexto(row[idxEstado])
-          ? normalizarTexto(row[idxEstado]).toUpperCase()
-          : "ACTIVO",
+      descripcion: `Ciclo ${ciclo} - ${mes} - ${grupo}`,
+      estado: "ACTIVO",
     });
   }
 
@@ -146,11 +146,19 @@ async function importarCiclos() {
     throw deleteError;
   }
 
-  const { error } = await supabase.from("ciclos_trabajo").insert(ciclos);
+  const batchSize = 500;
 
-  if (error) {
-    console.error("Error importando ciclos:", error);
-    throw error;
+  for (let i = 0; i < ciclos.length; i += batchSize) {
+    const batch = ciclos.slice(i, i + batchSize);
+
+    const { error } = await supabase.from("ciclos_trabajo").insert(batch);
+
+    if (error) {
+      console.error("Error importando lote:", i, error);
+      throw error;
+    }
+
+    console.log(`Lote importado: ${i + batch.length}/${ciclos.length}`);
   }
 
   console.log("Importación de CICLOS completada.");
