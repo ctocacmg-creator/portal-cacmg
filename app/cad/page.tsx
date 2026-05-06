@@ -124,6 +124,12 @@ export default function CadPage() {
 >
   Bitácora
 </a>
+<a
+  href="/cad/nueva"
+  className="rounded-xl bg-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-cyan-300"
+>
+  Nueva novedad
+</a>
           <a
             href="/dashboard"
             className="rounded-xl border border-slate-700 px-4 py-2 text-sm text-slate-300 hover:border-cyan-400 hover:text-cyan-300"
