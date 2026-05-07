@@ -56,6 +56,30 @@ function normalizarClave(valor: unknown) {
     .toUpperCase();
 }
 
+function numero(valor: unknown) {
+  const n = Number(valor ?? 0);
+  return Number.isFinite(n) ? n : 0;
+}
+
+function diasDelMes(anio: number, mesIndex: number) {
+  return new Date(anio, mesIndex + 1, 0).getDate();
+}
+
+function fechaLocalISO(fecha: Date) {
+  const partes = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Guayaquil",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(fecha);
+
+  const year = partes.find((parte) => parte.type === "year")?.value;
+  const month = partes.find((parte) => parte.type === "month")?.value;
+  const day = partes.find((parte) => parte.type === "day")?.value;
+
+  return `${year}-${month}-${day}`;
+}
+
 function extraerValorCelda(valor: unknown) {
   if (valor === null || valor === undefined) return null;
 
@@ -67,7 +91,6 @@ function extraerValorCelda(valor: unknown) {
       obj.estado ??
       obj.tipo ??
       obj.trabaja ??
-      obj.dia ??
       obj.value ??
       null
     );
@@ -109,7 +132,6 @@ function obtenerDesdeDiasPlan(diasPlan: unknown, dia: number) {
 
   if (typeof plan === "object") {
     const obj = plan as Record<string, unknown>;
-
     const diaDosDigitos = String(dia).padStart(2, "0");
 
     const candidatos = [
@@ -166,14 +188,6 @@ function obtenerDesdeDiasPlan(diasPlan: unknown, dia: number) {
 
   return null;
 }
-function numero(valor: unknown) {
-  const n = Number(valor ?? 0);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function diasDelMes(anio: number, mesIndex: number) {
-  return new Date(anio, mesIndex + 1, 0).getDate();
-}
 
 function esDiaTrabajo(valor: unknown) {
   const texto = normalizar(valor);
@@ -191,7 +205,10 @@ function esDiaTrabajo(valor: unknown) {
   );
 }
 
-function obtenerCampoNormalizado(row: Record<string, unknown>, nombres: string[]) {
+function obtenerCampoNormalizado(
+  row: Record<string, unknown>,
+  nombres: string[]
+) {
   const entries = Object.entries(row);
 
   for (const nombre of nombres) {
@@ -221,35 +238,6 @@ function obtenerValorDia(ciclo: CicloRow, dia: number) {
     String(valorJson).trim() !== ""
   ) {
     return valorJson;
-  }
-
-  const diaDosDigitos = String(dia).padStart(2, "0");
-
-  const candidatos = [
-    `dia_${dia}`,
-    `dia_${diaDosDigitos}`,
-    `dia${dia}`,
-    `dia${diaDosDigitos}`,
-    `dia ${dia}`,
-    `dia ${diaDosDigitos}`,
-    `d_${dia}`,
-    `d_${diaDosDigitos}`,
-    `d${dia}`,
-    `d${diaDosDigitos}`,
-    `DIA_${dia}`,
-    `DIA_${diaDosDigitos}`,
-    `DIA${dia}`,
-    `DIA${diaDosDigitos}`,
-    `DIA ${dia}`,
-    `DIA ${diaDosDigitos}`,
-    `D ${dia}`,
-    `D ${diaDosDigitos}`,
-  ];
-
-  const valorPorNombre = obtenerCampoNormalizado(ciclo, candidatos);
-
-  if (valorPorNombre !== null) {
-    return valorPorNombre;
   }
 
   return null;
@@ -307,22 +295,15 @@ function construirCalendario(
       )
     : 0;
 
-  const camposDiaDetectados = ciclo
-    ? Object.keys(ciclo).filter((key) => {
-        const clave = normalizarClave(key);
-        return /^DIA0?\d{1,2}$/.test(clave) || /^D0?\d{1,2}$/.test(clave);
-      })
-    : [];
-
   return {
     mes: MESES[mesIndex],
     anio,
     dias,
-    dias_trabajo: diasTrabajoTabla > 0 ? diasTrabajoTabla : diasTrabajoCalculados,
+    dias_trabajo:
+      diasTrabajoTabla > 0 ? diasTrabajoTabla : diasTrabajoCalculados,
     dias_descanso:
       diasDescansoTabla > 0 ? diasDescansoTabla : diasLibresCalculados,
     ciclo_encontrado: Boolean(ciclo),
-    campos_dia_detectados: camposDiaDetectados,
   };
 }
 
@@ -364,23 +345,23 @@ function buscarCiclo(
       const grupoCiclo =
         obtenerCampoNormalizado(ciclo, ["grupo", "GRUPO"]) ?? ciclo.grupo;
 
-      const mesCiclo = obtenerCampoNormalizado(ciclo, ["mes", "MES"]) ?? ciclo.mes;
+      const mesCiclo =
+        obtenerCampoNormalizado(ciclo, ["mes", "MES"]) ?? ciclo.mes;
 
       const anioCiclo = Number(ciclo.anio ?? 0);
       const mesNumeroCiclo = Number(ciclo.mes_numero ?? 0);
 
       const coincideGrupo = normalizar(grupoCiclo) === normalizar(grupo);
-
-      const coincideMesTexto =
-        normalizar(mesCiclo) === normalizar(mes);
-
+      const coincideMesTexto = normalizar(mesCiclo) === normalizar(mes);
       const coincideMesNumero =
         mesNumeroCiclo > 0 && mesNumeroCiclo === mesNumero;
+      const coincideAnio = !anioCiclo || anioCiclo === anio;
 
-      const coincideAnio =
-        !anioCiclo || anioCiclo === anio;
-
-      return coincideGrupo && coincideAnio && (coincideMesTexto || coincideMesNumero);
+      return (
+        coincideGrupo &&
+        coincideAnio &&
+        (coincideMesTexto || coincideMesNumero)
+      );
     }) ?? null
   );
 }
@@ -520,26 +501,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const { data: asignacion, error: errorAsignacion } = await supabaseAdmin
-      .from("asignaciones")
-      .select("*")
-      .eq("cedula", cedula)
-      .eq("estado_asignacion", "ACTIVO")
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (errorAsignacion) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error: `Error consultando asignación: ${errorAsignacion.message}`,
-        },
-        { status: 500 }
-      );
-    }
-
     const hoy = new Date();
+
+    const fechaConsulta = new Date(hoy);
+    fechaConsulta.setDate(fechaConsulta.getDate() + 1);
+    const fechaConsultaTexto = fechaLocalISO(fechaConsulta);
+
     const anioActual = hoy.getFullYear();
     const mesActualIndex = hoy.getMonth();
     const mesSiguienteIndex = (mesActualIndex + 1) % 12;
@@ -565,20 +532,20 @@ export async function POST(request: Request) {
     const ciclos = (ciclosData ?? []) as CicloRow[];
 
     const cicloActual = buscarCiclo(
-  ciclos,
-  grupoPersona,
-  MESES[mesActualIndex],
-  anioActual,
-  mesActualIndex + 1
-);
+      ciclos,
+      grupoPersona,
+      MESES[mesActualIndex],
+      anioActual,
+      mesActualIndex + 1
+    );
 
-const cicloSiguiente = buscarCiclo(
-  ciclos,
-  grupoPersona,
-  MESES[mesSiguienteIndex],
-  anioSiguiente,
-  mesSiguienteIndex + 1
-);
+    const cicloSiguiente = buscarCiclo(
+      ciclos,
+      grupoPersona,
+      MESES[mesSiguienteIndex],
+      anioSiguiente,
+      mesSiguienteIndex + 1
+    );
 
     const calendarioActual = construirCalendario(
       cicloActual,
@@ -609,9 +576,70 @@ const cicloSiguiente = buscarCiclo(
       avance_mes: calcularAvanceMes(calendarioActual, diaHoy),
       ciclo_actual_encontrado: calendarioActual.ciclo_encontrado,
       ciclo_siguiente_encontrado: calendarioSiguiente.ciclo_encontrado,
-      campos_dia_actual: calendarioActual.campos_dia_detectados,
-      campos_dia_siguiente: calendarioSiguiente.campos_dia_detectados,
     };
+
+    const { data: distributivoPublicado, error: errorDistributivo } =
+      await supabaseAdmin
+        .from("distributivos_publicados")
+        .select("id, fecha, estado, publicado_at")
+        .eq("fecha", fechaConsultaTexto)
+        .eq("estado", "PUBLICADO")
+        .maybeSingle();
+
+    if (errorDistributivo) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Error validando publicación del distributivo: ${errorDistributivo.message}`,
+        },
+        { status: 500 }
+      );
+    }
+
+    if (!distributivoPublicado) {
+      return NextResponse.json({
+        ok: true,
+        agente: {
+          cedula: persona.cedula,
+          nombres: persona.nombres,
+          grupo: persona.grupo,
+          area: persona.area,
+          detalle: persona,
+        },
+        asignacion: null,
+        calendarios: {
+          actual: calendarioActual,
+          siguiente: calendarioSiguiente,
+        },
+        estado_operativo: estadoOperativo,
+        distributivo: {
+          publicado: false,
+          fecha: fechaConsultaTexto,
+        },
+        mensaje:
+          "El distributivo de la siguiente jornada aún no ha sido publicado. Consulta nuevamente dentro del horario establecido.",
+      });
+    }
+
+    const { data: asignacion, error: errorAsignacion } = await supabaseAdmin
+      .from("asignaciones")
+      .select("*")
+      .eq("cedula", cedula)
+      .eq("estado_asignacion", "ACTIVO")
+      .eq("fecha_inicio", fechaConsultaTexto)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (errorAsignacion) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Error consultando asignación: ${errorAsignacion.message}`,
+        },
+        { status: 500 }
+      );
+    }
 
     return NextResponse.json({
       ok: true,
@@ -628,9 +656,14 @@ const cicloSiguiente = buscarCiclo(
         siguiente: calendarioSiguiente,
       },
       estado_operativo: estadoOperativo,
+      distributivo: {
+        publicado: true,
+        fecha: fechaConsultaTexto,
+        publicado_at: distributivoPublicado.publicado_at,
+      },
       mensaje: asignacion
         ? "Consulta realizada correctamente."
-        : "No tienes una asignación activa registrada.",
+        : "No tienes una asignación activa registrada para la siguiente jornada publicada.",
     });
   } catch (error) {
     return NextResponse.json(
