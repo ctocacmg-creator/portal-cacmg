@@ -44,6 +44,17 @@ type CalendarioConsulta = {
   ciclo_encontrado?: boolean;
 };
 
+type ReporteAgenteConsulta = {
+  id: string;
+  tipo_solicitud: string;
+  detalle: string;
+  prioridad: string;
+  estado: string;
+  respuesta_admin: string | null;
+  revisado_at: string | null;
+  created_at: string;
+};
+
 type ResultadoConsulta = {
   agente: AgenteConsulta;
   asignacion: AsignacionConsulta | null;
@@ -65,6 +76,7 @@ type ResultadoConsulta = {
     fecha: string;
     publicado_at?: string | null;
   };
+  reportes?: ReporteAgenteConsulta[];
   mensaje: string;
 };
 
@@ -142,6 +154,55 @@ function formatearFechaPublicada(valor: unknown) {
     day: "2-digit",
     month: "long",
     year: "numeric",
+  }).format(fecha);
+}
+
+function claseEstadoReporte(estado: string) {
+  if (estado === "PENDIENTE") {
+    return "border-amber-200 bg-amber-50 text-amber-800";
+  }
+
+  if (estado === "EN_REVISION") {
+    return "border-cyan-200 bg-cyan-50 text-cyan-800";
+  }
+
+  if (estado === "RESUELTO") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  }
+
+  if (estado === "RECHAZADO") {
+    return "border-red-200 bg-red-50 text-red-800";
+  }
+
+  return "border-slate-200 bg-slate-50 text-slate-700";
+}
+
+function clasePrioridadReporte(prioridad: string) {
+  if (prioridad === "URGENTE") {
+    return "bg-red-100 text-red-800";
+  }
+
+  if (prioridad === "ALTA") {
+    return "bg-amber-100 text-amber-800";
+  }
+
+  if (prioridad === "MEDIA") {
+    return "bg-cyan-100 text-cyan-800";
+  }
+
+  return "bg-slate-100 text-slate-700";
+}
+
+function formatearFechaReporte(valor: string | null) {
+  if (!valor) return "-";
+
+  const fecha = new Date(valor);
+
+  if (Number.isNaN(fecha.getTime())) return valor;
+
+  return new Intl.DateTimeFormat("es-EC", {
+    dateStyle: "medium",
+    timeStyle: "short",
   }).format(fecha);
 }
 
@@ -711,6 +772,79 @@ export default function ConsultaAgentePage() {
                 <Calendario calendario={resultado.calendarios.actual} />
                 <Calendario calendario={resultado.calendarios.siguiente} />
               </div>
+            </Seccion>
+
+            <Seccion titulo="Mis reportes recientes" color="purple">
+              {!resultado.reportes || resultado.reportes.length === 0 ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-bold text-slate-600">
+                  No tienes reportes registrados recientemente.
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {resultado.reportes.map((reporte) => (
+                    <article
+                      key={reporte.id}
+                      className="rounded-2xl border border-slate-200 bg-slate-50 p-4"
+                    >
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                          <div className="flex flex-wrap gap-2">
+                            <span
+                              className={`rounded-full border px-3 py-1 text-xs font-black ${claseEstadoReporte(
+                                reporte.estado
+                              )}`}
+                            >
+                              {reporte.estado}
+                            </span>
+
+                            <span
+                              className={`rounded-full px-3 py-1 text-xs font-black ${clasePrioridadReporte(
+                                reporte.prioridad
+                              )}`}
+                            >
+                              {reporte.prioridad}
+                            </span>
+                          </div>
+
+                          <h4 className="mt-3 font-black text-slate-900">
+                            {reporte.tipo_solicitud}
+                          </h4>
+
+                          <p className="mt-1 text-xs font-semibold text-slate-500">
+                            Enviado: {formatearFechaReporte(reporte.created_at)}
+                          </p>
+                        </div>
+
+                        {reporte.revisado_at ? (
+                          <p className="text-xs font-semibold text-slate-500">
+                            Revisado:{" "}
+                            {formatearFechaReporte(reporte.revisado_at)}
+                          </p>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-3">
+                        <p className="text-xs font-black uppercase text-slate-500">
+                          Detalle enviado
+                        </p>
+                        <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-6 text-slate-800">
+                          {reporte.detalle}
+                        </p>
+                      </div>
+
+                      <div className="mt-3 rounded-xl border border-slate-200 bg-white px-4 py-3">
+                        <p className="text-xs font-black uppercase text-slate-500">
+                          Respuesta administrativa
+                        </p>
+                        <p className="mt-2 whitespace-pre-wrap text-sm font-semibold leading-6 text-slate-800">
+                          {reporte.respuesta_admin ||
+                            "Aún no existe respuesta administrativa."}
+                        </p>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
             </Seccion>
 
             <Seccion titulo="Reportar Novedad / Actualizar Datos" color="red">

@@ -578,6 +578,26 @@ export async function POST(request: Request) {
       ciclo_siguiente_encontrado: calendarioSiguiente.ciclo_encontrado,
     };
 
+    const { data: reportesAgente, error: errorReportesAgente } =
+      await supabaseAdmin
+        .from("reportes_agente")
+        .select(
+          "id, tipo_solicitud, detalle, prioridad, estado, respuesta_admin, revisado_at, created_at"
+        )
+        .eq("cedula", cedula)
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+    if (errorReportesAgente) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Error consultando reportes del agente: ${errorReportesAgente.message}`,
+        },
+        { status: 500 }
+      );
+    }
+
     const { data: distributivoPublicado, error: errorDistributivo } =
       await supabaseAdmin
         .from("distributivos_publicados")
@@ -616,6 +636,7 @@ export async function POST(request: Request) {
           publicado: false,
           fecha: fechaConsultaTexto,
         },
+        reportes: reportesAgente ?? [],
         mensaje:
           "El distributivo de la siguiente jornada aún no ha sido publicado. Consulta nuevamente dentro del horario establecido.",
       });
@@ -661,6 +682,7 @@ export async function POST(request: Request) {
         fecha: fechaConsultaTexto,
         publicado_at: distributivoPublicado.publicado_at,
       },
+      reportes: reportesAgente ?? [],
       mensaje: asignacion
         ? "Consulta realizada correctamente."
         : "No tienes una asignación activa registrada para la siguiente jornada publicada.",
