@@ -73,8 +73,10 @@ export default function PropuestaAsignacionPage() {
   const [puestos, setPuestos] = useState<Puesto[]>([]);
   const [propuestas, setPropuestas] = useState<Propuesta[]>([]);
   const [mensaje, setMensaje] = useState("");
+  const [mensajeManual, setMensajeManual] = useState("");
   const [generando, setGenerando] = useState(false);
   const [aplicando, setAplicando] = useState(false);
+  const [agregandoManual, setAgregandoManual] = useState(false);
   const [guardandoBorrador, setGuardandoBorrador] = useState(false);
   const [cargandoBorrador, setCargandoBorrador] = useState(false);
   const [borradorId, setBorradorId] = useState("");
@@ -86,6 +88,7 @@ export default function PropuestaAsignacionPage() {
   const [observacionManual, setObservacionManual] = useState(
     "Agregado manualmente a propuesta."
   );
+  const [permitirExcepcion, setPermitirExcepcion] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -159,6 +162,7 @@ export default function PropuestaAsignacionPage() {
 
     setGenerando(true);
     setMensaje("");
+    setMensajeManual("");
     setBorradorId("");
     setDisponibles([]);
     setPuestosDeficit([]);
@@ -270,56 +274,45 @@ export default function PropuestaAsignacionPage() {
   }
 
   async function agregarManualAPropuesta() {
-    if (!fecha) {
-      setMensaje("Selecciona una fecha antes de agregar manualmente.");
-      return;
-    }
-
-    const cedulaLimpia = cedulaManual.trim();
-    const puestoLimpio = puestoManual.trim().toUpperCase();
-
-    if (!cedulaLimpia || !puestoLimpio) {
-      setMensaje("Ingresa cédula y puesto para agregar manualmente.");
-      return;
-    }
-
-    const { data: sessionData } = await supabase.auth.getSession();
-
-    if (!sessionData.session) {
-      window.location.href = "/login";
-      return;
-    }
-
+    setAgregandoManual(true);
+    setMensajeManual("Procesando clic en Agregar a propuesta...");
     setMensaje("");
 
     try {
-      let personalDisponible = disponibles;
-      let catalogoPuestos = puestos;
-
-      if (personalDisponible.length === 0 || catalogoPuestos.length === 0) {
-        const base = await cargarBasePropuesta(fecha);
-        personalDisponible = base.personalDisponible;
-        catalogoPuestos = base.catalogoPuestos;
+      if (!fecha) {
+        setMensajeManual("Selecciona una fecha antes de agregar manualmente.");
+        return;
       }
 
-      const persona = personalDisponible.find(
-        (item) => item.cedula?.trim() === cedulaLimpia
-      );
+      const cedulaLimpia = cedulaManual.replace(/\D/g, "").trim();
+      const puestoLimpio = puestoManual.trim().toUpperCase();
 
-      if (!persona) {
-        setMensaje(
-          "No se encontró esa cédula dentro del personal disponible para la fecha seleccionada."
+      if (!cedulaLimpia) {
+        setMensajeManual(
+          "Ingresa la cédula del agente para agregar manualmente."
         );
         return;
       }
 
-      const yaExiste = propuestas.some(
-        (item) => item.cedula.trim() === cedulaLimpia
-      );
-
-      if (yaExiste) {
-        setMensaje("Esa persona ya está dentro de la propuesta actual.");
+      if (!puestoLimpio) {
+        setMensajeManual("Selecciona un puesto para agregar manualmente.");
         return;
+      }
+
+      const { data: sessionData } = await supabase.auth.getSession();
+
+      if (!sessionData.session) {
+        window.location.href = "/login";
+        return;
+      }
+
+      setMensajeManual("Validando disponibilidad, excepción y catálogo...");
+
+      let catalogoPuestos = puestos;
+
+      if (catalogoPuestos.length === 0) {
+        const base = await cargarBasePropuesta(fecha);
+        catalogoPuestos = base.catalogoPuestos;
       }
 
       const puesto = catalogoPuestos.find(
@@ -327,35 +320,102 @@ export default function PropuestaAsignacionPage() {
       );
 
       if (!puesto) {
-        setMensaje("El puesto seleccionado no existe en el catálogo.");
+        setMensajeManual(`El puesto ${puestoLimpio} no existe en el catálogo.`);
         return;
       }
 
+      const { data: disponibilidadData, error: errorDisponibilidad } =
+        await supabase.rpc("fn_personal_disponible_en_fecha", {
+          p_fecha: fecha,
+        });
+
+      if (errorDisponibilidad) {
+        setMensajeManual(
+          `Error consultando disponibilidad: ${errorDisponibilidad.message}`
+        );
+        return;
+      }
+
+      const registro = ((disponibilidadData ?? []) as Disponible[]).find(
+        (item) => item.cedula?.replace(/\D/g, "").trim() === cedulaLimpia
+      );
+
+      if (!registro) {
+        setMensajeManual(
+          `No se encontró la cédula ${cedulaLimpia} en la nómina para validar disponibilidad.`
+        );
+        return;
+      }
+
+      if (registro.motivo_no_disponible === "YA_TIENE_ASIGNACION_ACTIVA") {
+        setMensajeManual(
+          `No se puede agregar con excepción. La cédula ${cedulaLimpia} ya tiene asignación activa.`
+        );
+        return;
+      }
+
+      if (!registro.disponible && !permitirExcepcion) {
+        setMensajeManual(
+          `La cédula ${cedulaLimpia} no está disponible para la fecha ${fecha}. Motivo: ${
+            registro.motivo_no_disponible ?? "NO DISPONIBLE"
+          }. Activa "Agregar con excepción" si deseas incluirla de todas formas.`
+        );
+        return;
+      }
+
+      const yaExiste = propuestas.some(
+        (item) => item.cedula.replace(/\D/g, "").trim() === cedulaLimpia
+      );
+
+      if (yaExiste) {
+        setMensajeManual("Esa persona ya está dentro de la propuesta actual.");
+        return;
+      }
+
+      const observacionBase =
+        observacionManual.trim() || "Agregado manualmente a propuesta.";
+
+      const observacionFinal = registro.disponible
+        ? observacionBase
+        : `[EXCEPCIÓN: ${
+            registro.motivo_no_disponible ?? "NO DISPONIBLE"
+          }] ${observacionBase}`;
+
       const nuevaPropuesta: Propuesta = {
-        propuesta_id: `MANUAL-${cedulaLimpia}-${puesto.id_puesto}-${Date.now()}`,
-        cedula: persona.cedula ?? "",
-        nombres: persona.nombres ?? "",
-        grupo: persona.grupo,
-        area: persona.area,
+        propuesta_id: `${
+          registro.disponible ? "MANUAL" : "EXCEPCION"
+        }-${cedulaLimpia}-${puesto.id_puesto}-${Date.now()}`,
+        cedula: registro.cedula ?? "",
+        nombres: registro.nombres ?? "",
+        grupo: registro.grupo,
+        area: registro.area,
         id_puesto: puesto.id_puesto,
         distrito: puesto.distrito,
         fecha_inicio: fecha,
-        estado_ciclo: persona.estado_ciclo,
+        estado_ciclo: registro.estado_ciclo,
         funcion: funcionManual.trim().toUpperCase() || "SERVICIO OPERATIVO",
         horario: horarioManual.trim().toUpperCase(),
-        observacion:
-          observacionManual.trim() || "Agregado manualmente a propuesta.",
+        observacion: observacionFinal,
       };
 
       setPropuestas((actual) => [...actual, nuevaPropuesta]);
       setCedulaManual("");
-      setMensaje(`Agregado manualmente: ${nuevaPropuesta.nombres}.`);
+
+      setMensajeManual(
+        registro.disponible
+          ? `Agregado correctamente: ${nuevaPropuesta.cedula} - ${nuevaPropuesta.nombres} al puesto ${nuevaPropuesta.id_puesto}.`
+          : `Agregado con excepción: ${nuevaPropuesta.cedula} - ${nuevaPropuesta.nombres}. Motivo: ${
+              registro.motivo_no_disponible ?? "NO DISPONIBLE"
+            }.`
+      );
     } catch (error) {
-      setMensaje(
+      setMensajeManual(
         error instanceof Error
           ? error.message
           : "Error agregando manualmente a la propuesta."
       );
+    } finally {
+      setAgregandoManual(false);
     }
   }
 
@@ -694,17 +754,6 @@ export default function PropuestaAsignacionPage() {
     })
     .slice(0, 10);
 
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const borradorParam = params.get("borrador");
-
-    if (borradorParam) {
-      cargarBorradorPorId(borradorParam);
-    }
-
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   return (
     <main className="min-h-screen bg-slate-950 px-6 py-8 text-white">
       <section className="mx-auto max-w-7xl">
@@ -956,6 +1005,24 @@ export default function PropuestaAsignacionPage() {
             </div>
           </div>
 
+          <div className="mt-5 rounded-xl border border-amber-800 bg-amber-950/20 p-4">
+            <label className="flex items-start gap-3 text-sm text-amber-200">
+              <input
+                type="checkbox"
+                checked={permitirExcepcion}
+                onChange={(event) => setPermitirExcepcion(event.target.checked)}
+                className="mt-1"
+              />
+
+              <span>
+                Agregar con excepción. Permite incluir al agente aunque figure
+                como no disponible por ciclo, ausentismo, condición especial o
+                falta de planificación. No permite duplicar una asignación
+                activa.
+              </span>
+            </label>
+          </div>
+
           {cedulaManual && disponiblesFiltradosManual.length > 0 ? (
             <div className="mt-4 rounded-xl border border-slate-700 bg-slate-950 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">
@@ -981,13 +1048,19 @@ export default function PropuestaAsignacionPage() {
             </div>
           ) : null}
 
+          {mensajeManual ? (
+            <div className="mt-5 rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-sm text-slate-300">
+              {mensajeManual}
+            </div>
+          ) : null}
+
           <button
             type="button"
             onClick={agregarManualAPropuesta}
-            disabled={aplicando || generando}
+            disabled={aplicando || generando || agregandoManual}
             className="mt-5 rounded-xl bg-emerald-400 px-4 py-3 text-sm font-semibold text-slate-950 hover:bg-emerald-300 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Agregar a propuesta
+            {agregandoManual ? "Agregando..." : "Agregar a propuesta"}
           </button>
         </div>
 
