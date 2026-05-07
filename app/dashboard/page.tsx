@@ -85,6 +85,21 @@ export default function DashboardPage() {
       "Distribución operativa por puestos, distritos, grupos y fechas.",
       "/asignacion",
     ],
+[
+  "Consulta agente",
+  "Portal público para que el agente consulte su información, corrida laboral, asignación publicada y reportes.",
+  "/consulta",
+],
+[
+  "Publicar distributivo",
+  "Habilita la consulta pública de la distribución operativa para una fecha publicada.",
+  "/asignacion/publicacion",
+],
+[
+  "Reportes agente",
+  "Revisión administrativa de novedades y solicitudes enviadas desde el Portal del Agente.",
+  "/asignacion/reportes-agente",
+],
     [
       "CAD",
       "Novedades operativas, bitácora, apoyos y estado en tiempo real.",
