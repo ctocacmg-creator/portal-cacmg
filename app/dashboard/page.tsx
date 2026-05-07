@@ -95,6 +95,11 @@ export default function DashboardPage() {
       "Consulta del personal actualmente asignado a puestos operativos.",
       "/asignacion/activas",
     ],
+[
+  "Consulta agente",
+  "Consulta individual de asignación con aceptación previa de disposiciones.",
+  "/consulta",
+],
     [
       "Ciclos",
       "Cronograma base, turnos y ciclos de trabajo operativo.",
