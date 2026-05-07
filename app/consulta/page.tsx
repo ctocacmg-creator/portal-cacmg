@@ -1,17 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const VERSION_DOCUMENTO = "DISPOSICIONES_CONSULTA_V1_2026";
+
+type PersonaDetalle = Record<string, unknown>;
 
 type AgenteConsulta = {
   cedula: string;
   nombres: string | null;
   grupo: string | null;
   area: string | null;
+  detalle: PersonaDetalle;
 };
 
-type AsignacionConsulta = {
+type AsignacionConsulta = Record<string, unknown> & {
   cedula: string;
   grupo: string | null;
   area: string | null;
@@ -24,32 +27,150 @@ type AsignacionConsulta = {
   created_at: string;
 };
 
+type DiaCalendario = {
+  dia: number;
+  nombreDia: string;
+  valor: string;
+  trabaja: boolean;
+  estado: string;
+};
+
+type CalendarioConsulta = {
+  mes: string;
+  anio: number;
+  dias: DiaCalendario[];
+  dias_trabajo: number;
+  dias_descanso: number;
+};
+
 type ResultadoConsulta = {
   agente: AgenteConsulta;
   asignacion: AsignacionConsulta | null;
+  calendarios: {
+    actual: CalendarioConsulta;
+    siguiente: CalendarioConsulta;
+  };
+  estado_operativo: {
+    hoy: string;
+    manana: string;
+    dias_trabajo_mes: number;
+    dias_libres_mes: number;
+    avance_mes: number;
+  };
   mensaje: string;
 };
 
+type TipoMensaje = "ok" | "error" | "";
+
 function generarNumeroCaptcha() {
   return Math.floor(Math.random() * 8) + 2;
+}
+
+function texto(valor: unknown, fallback = "N/A") {
+  const salida = String(valor ?? "").trim();
+  return salida || fallback;
+}
+
+function normalizarClave(valor: string) {
+  return valor
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+function campo(persona: PersonaDetalle, posibles: string[], fallback = "N/A") {
+  const entries = Object.entries(persona);
+  const posiblesNormalizados = posibles.map(normalizarClave);
+
+  for (const [key, value] of entries) {
+    if (posiblesNormalizados.includes(normalizarClave(key))) {
+      return texto(value, fallback);
+    }
+  }
+
+  return fallback;
+}
+
+function formatearFechaHora(fecha: Date) {
+  return new Intl.DateTimeFormat("es-EC", {
+    weekday: "long",
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).format(fecha);
+}
+
+function formatearFecha(valor: unknown) {
+  const textoFecha = String(valor ?? "").trim();
+
+  if (!textoFecha) return "N/A";
+
+  const fecha = new Date(`${textoFecha}T00:00:00`);
+
+  if (Number.isNaN(fecha.getTime())) return textoFecha;
+
+  return new Intl.DateTimeFormat("es-EC", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  }).format(fecha);
+}
+
+function estadoColor(estado: string) {
+  if (estado === "TRABAJA") {
+    return "border-emerald-200 bg-emerald-50 text-emerald-800";
+  }
+
+  if (estado === "LIBRE") {
+    return "border-amber-200 bg-amber-50 text-amber-800";
+  }
+
+  return "border-slate-200 bg-slate-50 text-slate-700";
 }
 
 export default function ConsultaAgentePage() {
   const [cedula, setCedula] = useState("");
   const [codigoValidacion, setCodigoValidacion] = useState("");
   const [aceptaDisposiciones, setAceptaDisposiciones] = useState(false);
+  const [captchaA, setCaptchaA] = useState(0);
+  const [captchaB, setCaptchaB] = useState(0);
   const [captchaRespuesta, setCaptchaRespuesta] = useState("");
   const [consultando, setConsultando] = useState(false);
   const [mensaje, setMensaje] = useState("");
+  const [tipoMensaje, setTipoMensaje] = useState<TipoMensaje>("");
   const [resultado, setResultado] = useState<ResultadoConsulta | null>(null);
+  const [modalDisposiciones, setModalDisposiciones] = useState(false);
+  const [ahora, setAhora] = useState(new Date());
 
-  const captcha = useMemo(
-    () => ({
-      a: generarNumeroCaptcha(),
-      b: generarNumeroCaptcha(),
-    }),
-    []
-  );
+  useEffect(() => {
+    renovarCaptcha();
+
+    const intervalo = window.setInterval(() => {
+      setAhora(new Date());
+    }, 1000);
+
+    return () => window.clearInterval(intervalo);
+  }, []);
+
+  function renovarCaptcha() {
+    setCaptchaA(generarNumeroCaptcha());
+    setCaptchaB(generarNumeroCaptcha());
+    setCaptchaRespuesta("");
+  }
+
+  function limpiarFormulario() {
+    setCedula("");
+    setCodigoValidacion("");
+    setAceptaDisposiciones(false);
+    setMensaje("");
+    setTipoMensaje("");
+    setResultado(null);
+    renovarCaptcha();
+  }
 
   const puedeConsultar =
     cedula.replace(/\D/g, "").trim().length >= 8 &&
@@ -63,6 +184,7 @@ export default function ConsultaAgentePage() {
 
     setConsultando(true);
     setMensaje("");
+    setTipoMensaje("");
     setResultado(null);
 
     try {
@@ -75,8 +197,8 @@ export default function ConsultaAgentePage() {
           cedula,
           codigoValidacion,
           aceptaDisposiciones,
-          captchaA: captcha.a,
-          captchaB: captcha.b,
+          captchaA,
+          captchaB,
           captchaRespuesta,
         }),
       });
@@ -84,245 +206,545 @@ export default function ConsultaAgentePage() {
       const data = await response.json();
 
       if (!response.ok || !data.ok) {
+        setTipoMensaje("error");
         setMensaje(data.error ?? "No se pudo realizar la consulta.");
+        renovarCaptcha();
         return;
       }
 
-      setResultado({
-        agente: data.agente,
-        asignacion: data.asignacion,
-        mensaje: data.mensaje,
-      });
-
+      setResultado(data as ResultadoConsulta);
+      setTipoMensaje("ok");
       setMensaje(data.mensaje ?? "Consulta realizada correctamente.");
+      renovarCaptcha();
     } catch (error) {
+      setTipoMensaje("error");
       setMensaje(
         error instanceof Error
           ? error.message
-          : "Error inesperado realizando consulta."
+          : "Error inesperado realizando la consulta."
       );
+      renovarCaptcha();
     } finally {
       setConsultando(false);
     }
   }
 
-  return (
-    <main className="min-h-screen bg-slate-950 px-6 py-8 text-white">
-      <section className="mx-auto max-w-4xl">
-        <div>
-          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-cyan-400">
-            CACM-G
-          </p>
+  const claseMensaje = useMemo(() => {
+    if (tipoMensaje === "ok") return "border-emerald-200 bg-emerald-50 text-emerald-800";
+    if (tipoMensaje === "error") return "border-red-200 bg-red-50 text-red-800";
+    return "border-slate-200 bg-white text-slate-700";
+  }, [tipoMensaje]);
 
-          <h1 className="mt-4 text-3xl font-bold">
-            Consulta de asignación del agente
+  const detalle = resultado?.agente.detalle ?? {};
+  const asignacion = resultado?.asignacion;
+  const nombreAgente = resultado?.agente.nombres ?? campo(detalle, ["apellidos_y_nombres", "apellidos y nombres"], "AGENTE CACM-G");
+  const grupoAgente = resultado?.agente.grupo ?? texto(asignacion?.grupo);
+  const areaAgente = resultado?.agente.area ?? texto(asignacion?.area);
+
+  return (
+    <main className="min-h-screen bg-[#eef3f7] text-slate-900">
+      <header className="bg-[#073763] px-4 py-6 text-white shadow-lg">
+        <div className="mx-auto flex max-w-6xl flex-col items-center text-center">
+          <div className="flex h-24 w-24 items-center justify-center rounded-full border-4 border-amber-300 bg-white shadow-xl">
+            <img
+              src="/logo.png"
+              alt="CACM-G"
+              className="h-20 w-20 object-contain"
+              onError={(event) => {
+                event.currentTarget.style.display = "none";
+              }}
+            />
+            <span className="absolute text-xs font-black text-[#073763]">
+              CACM-G
+            </span>
+          </div>
+
+          <h1 className="mt-4 text-3xl font-black">
+            PORTAL DEL AGENTE CACM-G
           </h1>
 
-          <p className="mt-3 text-slate-400">
-            Ingresa tu cédula y código de validación para consultar tu
-            distribución operativa vigente.
+          <p className="mt-1 text-sm font-semibold text-blue-100">
+            Cuerpo de Agentes de Control Municipal de Guayaquil
+          </p>
+        </div>
+      </header>
+
+      <section className="mx-auto max-w-6xl px-4 py-6">
+        {!resultado ? (
+          <div className="rounded-[28px] bg-white p-6 shadow-xl ring-1 ring-slate-200 sm:p-8">
+            <h2 className="text-3xl font-black">Acceso Institucional</h2>
+
+            <p className="mt-1 text-slate-600">
+              Sistema Interno de Gestión Operativa de Personal
+            </p>
+
+            <form onSubmit={consultarAsignacion} className="mt-7 space-y-5">
+              <CampoFormulario
+                label="Cédula"
+                value={cedula}
+                onChange={setCedula}
+                placeholder="Ingrese su número de cédula"
+              />
+
+              <CampoFormulario
+                label="Código"
+                value={codigoValidacion}
+                onChange={setCodigoValidacion}
+                placeholder="Ingrese su código de validación"
+                type="password"
+              />
+
+              <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 p-4">
+                <label className="font-black">
+                  ¿Cuánto es {captchaA} + {captchaB}?
+                </label>
+
+                <input
+                  value={captchaRespuesta}
+                  onChange={(event) => setCaptchaRespuesta(event.target.value)}
+                  placeholder="Resultado de la suma"
+                  className="mt-3 w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-[#073763]"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setModalDisposiciones(true)}
+                className="flex items-center gap-2 font-black text-[#073763]"
+              >
+                <span className="h-3 w-3 bg-cyan-400" />
+                Ver Disposiciones Generales
+              </button>
+
+              <label className="flex items-start gap-3 text-sm font-semibold">
+                <input
+                  type="checkbox"
+                  checked={aceptaDisposiciones}
+                  onChange={(event) =>
+                    setAceptaDisposiciones(event.target.checked)
+                  }
+                  className="mt-1 h-5 w-5"
+                />
+
+                <span>
+                  He leído y acepto las Disposiciones Generales de Servicio.
+                </span>
+              </label>
+
+              {mensaje ? (
+                <div className={`rounded-xl border px-4 py-3 ${claseMensaje}`}>
+                  {mensaje}
+                </div>
+              ) : null}
+
+              <button
+                type="submit"
+                disabled={!puedeConsultar}
+                className="w-full rounded-2xl bg-[#7895b2] px-5 py-4 font-black uppercase text-white shadow transition hover:bg-[#5f7f9f] disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {consultando ? "Consultando..." : "Ingresar"}
+              </button>
+            </form>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <PanelEstado
+              nombreAgente={nombreAgente}
+              grupo={grupoAgente}
+              hoy={resultado.estado_operativo.hoy}
+              manana={resultado.estado_operativo.manana}
+              diasTrabajo={resultado.estado_operativo.dias_trabajo_mes}
+              diasLibres={resultado.estado_operativo.dias_libres_mes}
+              avance={resultado.estado_operativo.avance_mes}
+              fecha={formatearFechaHora(ahora)}
+              onNuevaConsulta={limpiarFormulario}
+            />
+
+{!resultado.estado_operativo.ciclo_actual_encontrado ? (
+  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm font-bold text-amber-800">
+    No se encontró corrida laboral para el grupo {grupoAgente} en el mes actual.
+    Verifica que CICLOS tenga el mes y grupo correctamente cargados.
+  </div>
+) : null}
+
+            <Seccion titulo="Información Operativa" color="red">
+              <GridDatos>
+                <Dato label="Asignación" value={texto(asignacion?.id_puesto)} destaque />
+                <Dato label="Función" value={texto(asignacion?.funcion)} />
+                <Dato label="Horario" value={texto(asignacion?.horario)} />
+                <Dato label="Formación" value={campo(detalle, ["lugar_formacion", "lugar de formación"], "N/A")} />
+                <Dato label="Consignas" value={campo(detalle, ["consignas"], "N/A")} />
+                <Dato label="Base legal" value={campo(detalle, ["base_legal", "base legal"], "N/A")} />
+                <Dato label="Jefe inmediato" value={campo(detalle, ["encargado_o_jefe_inmediato", "encargado o jefe inmediato"], "N/A")} />
+                <Dato label="Observación" value={texto(asignacion?.observacion, "Sin observaciones")} />
+<Dato
+  label="Parroquia residencia"
+  value={campo(detalle, ["parroquia_residencia", "parroquia"])}
+/>
+
+<Dato
+  label="Sector residencia"
+  value={campo(detalle, ["sector_residencia", "sector"])}
+/>
+              </GridDatos>
+            </Seccion>
+
+            <Seccion titulo="Identificación" color="blue">
+              <GridDatos>
+                <Dato label="Cédula" value={resultado.agente.cedula} />
+                <Dato label="Nombre" value={nombreAgente} />
+                <Dato label="Grado" value={campo(detalle, ["grado"])} />
+                <Dato label="Grupo" value={grupoAgente} />
+                <Dato label="Área" value={areaAgente} />
+                <Dato label="Estado" value={campo(detalle, ["estado"])} />
+              </GridDatos>
+            </Seccion>
+
+            <Seccion titulo="Información Personal" color="green">
+              <GridDatos>
+                <Dato label="Fecha nacimiento" value={formatearFecha(campo(detalle, ["fecha_nacimiento", "fecha de nacimiento"], ""))} />
+                <Dato label="Género" value={campo(detalle, ["genero", "género"])} />
+                <Dato label="Tipo sangre" value={campo(detalle, ["tipo_sangre", "tipo de sangre"])} />
+                <Dato label="Celular" value={campo(detalle, ["numero_celular", "numero de celular", "celular"])} />
+                <Dato label="Correo" value={campo(detalle, ["correo_electronico", "correo electronico"])} />
+                <Dato label="Dirección" value={campo(detalle, ["direccion_domiciliaria", "direccion domiciliaria"])} />
+              </GridDatos>
+            </Seccion>
+
+            <Seccion titulo="Licencias" color="yellow">
+              <GridDatos>
+                <Dato label="Custodio vehículo" value={campo(detalle, ["custodio_vehiculo", "custodio del vehiculo"])} />
+                <Dato label="Tipo licencia" value={campo(detalle, ["tipo_licencia"])} />
+                <Dato label="Licencia vigente" value={campo(detalle, ["licencia_vigente"])} />
+                <Dato label="Vencimiento licencia" value={formatearFecha(campo(detalle, ["fecha_vencimiento_licencia"], ""))} />
+                <Dato label="Tipo A" value={campo(detalle, ["licencia_tipo_a", "licencia tipo a"])} />
+                <Dato label="Tipo B" value={campo(detalle, ["licencia_tipo_b", "licencia tipo b"])} />
+                <Dato label="Tipo C" value={campo(detalle, ["licencia_tipo_c", "licencia tipo c"])} />
+                <Dato label="Tipo D" value={campo(detalle, ["licencia_tipo_d", "licencia tipo d"])} />
+                <Dato label="Tipo E" value={campo(detalle, ["licencia_tipo_e", "licencia tipo e"])} />
+                <Dato label="Tipo G" value={campo(detalle, ["licencia_tipo_g", "licencia tipo g"])} />
+              </GridDatos>
+            </Seccion>
+
+            <Seccion titulo="Ausentismo" color="purple">
+              <GridDatos>
+                <Dato label="Por" value={campo(detalle, ["ausentismo_por", "ausentismo por"])} />
+                <Dato label="Desde" value={formatearFecha(campo(detalle, ["ausentismo_desde", "ausentismo desde"], ""))} />
+                <Dato label="Hasta" value={formatearFecha(campo(detalle, ["ausentismo_hasta", "ausentismo hasta"], ""))} />
+                <Dato label="Nota" value={campo(detalle, ["nota_ausentismo", "nota ausentismo"])} />
+              </GridDatos>
+            </Seccion>
+
+            <Seccion titulo="Calendario Laboral" color="blue">
+              <div className="grid gap-6 lg:grid-cols-2">
+                <Calendario calendario={resultado.calendarios.actual} />
+                <Calendario calendario={resultado.calendarios.siguiente} />
+              </div>
+            </Seccion>
+
+            <Seccion titulo="Reportar Novedad / Actualizar Datos" color="red">
+              <div className="space-y-3">
+                <select
+                  disabled
+                  className="w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-slate-500"
+                >
+                  <option>Seleccione tipo de solicitud...</option>
+                </select>
+
+                <textarea
+                  disabled
+                  placeholder="Módulo pendiente de habilitación"
+                  className="min-h-24 w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-slate-500"
+                />
+
+                <button
+                  type="button"
+                  disabled
+                  className="w-full rounded-xl bg-slate-300 px-4 py-3 font-black text-slate-500"
+                >
+                  Enviar reporte
+                </button>
+              </div>
+            </Seccion>
+          </div>
+        )}
+      </section>
+
+      <footer className="px-4 pb-8 text-center text-xs font-semibold text-slate-500">
+        Cuerpo de Agentes de Control Municipal de Guayaquil
+      </footer>
+
+      {modalDisposiciones ? (
+        <ModalDisposiciones onClose={() => setModalDisposiciones(false)} />
+      ) : null}
+    </main>
+  );
+}
+
+function CampoFormulario({
+  label,
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  type?: string;
+}) {
+  return (
+    <div>
+      <label className="mb-2 block font-black">{label}</label>
+      <input
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className="w-full rounded-xl border border-slate-300 px-4 py-3 outline-none focus:border-[#073763]"
+      />
+    </div>
+  );
+}
+
+function PanelEstado({
+  nombreAgente,
+  grupo,
+  hoy,
+  manana,
+  diasTrabajo,
+  diasLibres,
+  avance,
+  fecha,
+  onNuevaConsulta,
+}: {
+  nombreAgente: string;
+  grupo: string;
+  hoy: string;
+  manana: string;
+  diasTrabajo: number;
+  diasLibres: number;
+  avance: number;
+  fecha: string;
+  onNuevaConsulta: () => void;
+}) {
+  return (
+    <section className="rounded-[28px] bg-white p-5 shadow-xl ring-1 ring-slate-200 sm:p-6">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-black uppercase tracking-widest text-slate-500">
+            Fecha {fecha}
+          </p>
+          <h2 className="mt-3 text-2xl font-black text-slate-950">
+            Bienvenido {nombreAgente}
+          </h2>
+        </div>
+
+        <button
+          type="button"
+          onClick={onNuevaConsulta}
+          className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-black text-slate-700 hover:bg-slate-50"
+        >
+          Nueva consulta
+        </button>
+      </div>
+
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
+        <MiniCard label="Grupo" value={grupo} color="blue" />
+        <MiniCard label="Hoy" value={hoy} color={hoy === "TRABAJA" ? "green" : "amber"} />
+        <MiniCard label="Mañana" value={manana} color={manana === "TRABAJA" ? "green" : "amber"} />
+        <MiniCard label="D. trabajo" value={String(diasTrabajo)} color="cyan" />
+        <MiniCard label="D. libres" value={String(diasLibres)} color="purple" />
+        <MiniCard label="Avance mes" value={`${avance}%`} color="slate" />
+      </div>
+    </section>
+  );
+}
+
+function MiniCard({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: string;
+  color: "blue" | "green" | "amber" | "cyan" | "purple" | "slate";
+}) {
+  const clases = {
+    blue: "border-blue-200 bg-blue-50 text-blue-800",
+    green: "border-emerald-200 bg-emerald-50 text-emerald-800",
+    amber: "border-amber-200 bg-amber-50 text-amber-800",
+    cyan: "border-cyan-200 bg-cyan-50 text-cyan-800",
+    purple: "border-purple-200 bg-purple-50 text-purple-800",
+    slate: "border-slate-200 bg-slate-50 text-slate-800",
+  };
+
+  return (
+    <div className={`rounded-2xl border p-4 ${clases[color]}`}>
+      <p className="text-xs font-black uppercase">{label}</p>
+      <p className="mt-1 text-2xl font-black">{value}</p>
+    </div>
+  );
+}
+
+function Seccion({
+  titulo,
+  color,
+  children,
+}: {
+  titulo: string;
+  color: "red" | "blue" | "green" | "yellow" | "purple";
+  children: React.ReactNode;
+}) {
+  const colores = {
+    red: "bg-red-400",
+    blue: "bg-blue-400",
+    green: "bg-emerald-400",
+    yellow: "bg-amber-400",
+    purple: "bg-purple-400",
+  };
+
+  return (
+    <section className="rounded-[28px] bg-white shadow-xl ring-1 ring-slate-200">
+      <div className="border-b border-slate-100 px-5 py-4">
+        <h3 className="flex items-center gap-2 text-lg font-black">
+          <span className={`h-3 w-3 rounded-full ${colores[color]}`} />
+          {titulo}
+        </h3>
+      </div>
+
+      <div className="p-5">{children}</div>
+    </section>
+  );
+}
+
+function GridDatos({ children }: { children: React.ReactNode }) {
+  return <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{children}</div>;
+}
+
+function Dato({
+  label,
+  value,
+  destaque = false,
+}: {
+  label: string;
+  value: string;
+  destaque?: boolean;
+}) {
+  return (
+    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+      <p className="text-xs font-black uppercase text-slate-500">{label}</p>
+      <p
+        className={`mt-1 break-words font-black ${
+          destaque ? "text-[#073763]" : "text-slate-900"
+        }`}
+      >
+        {value || "N/A"}
+      </p>
+    </div>
+  );
+}
+
+function Calendario({ calendario }: { calendario: CalendarioConsulta }) {
+  const diasSemana = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+
+  const primerDia = new Date(calendario.anio, mesIndex(calendario.mes), 1);
+  const desplazamiento = (primerDia.getDay() + 6) % 7;
+
+  const espacios = Array.from({ length: desplazamiento }, (_, index) => index);
+
+  return (
+    <div>
+      <h4 className="font-black uppercase text-[#073763]">
+        📅 {calendario.mes} {calendario.anio}
+      </h4>
+
+      <div className="mt-3 grid grid-cols-7 gap-2 text-center text-xs font-black text-slate-500">
+        {diasSemana.map((dia) => (
+          <div key={dia}>{dia}</div>
+        ))}
+      </div>
+
+      <div className="mt-2 grid grid-cols-7 gap-2">
+        {espacios.map((item) => (
+          <div key={`espacio-${item}`} />
+        ))}
+
+        {calendario.dias.map((dia) => (
+          <div
+            key={dia.dia}
+            className={`min-h-16 rounded-xl border p-2 text-center text-xs font-black ${
+              dia.trabaja
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                : "border-amber-200 bg-amber-50 text-amber-800"
+            }`}
+          >
+            <p>{dia.dia}</p>
+            <p className="mt-1">{dia.trabaja ? "X" : "Libre"}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function mesIndex(mes: string) {
+  const meses = [
+    "ENERO",
+    "FEBRERO",
+    "MARZO",
+    "ABRIL",
+    "MAYO",
+    "JUNIO",
+    "JULIO",
+    "AGOSTO",
+    "SEPTIEMBRE",
+    "OCTUBRE",
+    "NOVIEMBRE",
+    "DICIEMBRE",
+  ];
+
+  return meses.indexOf(mes.toUpperCase());
+}
+
+function ModalDisposiciones({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4">
+      <div className="max-h-[92vh] w-full max-w-4xl overflow-hidden rounded-[28px] bg-white shadow-2xl">
+        <div className="bg-[#073763] px-6 py-4 text-white">
+          <h3 className="text-2xl font-black">Disposiciones Generales</h3>
+          <p className="mt-1 text-sm text-blue-100">
+            Disposiciones Generales de Servicio 2026 · {VERSION_DOCUMENTO}
           </p>
         </div>
 
-        <form
-          onSubmit={consultarAsignacion}
-          className="mt-8 rounded-2xl border border-slate-800 bg-slate-900 p-5"
-        >
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <label className="text-sm font-medium text-slate-300">
-                Cédula
-              </label>
+        <div className="max-h-[68vh] space-y-3 overflow-y-auto px-6 py-5 text-sm leading-6 text-slate-700">
+          <p><strong>1. Puntualidad y permanencia:</strong> Presentarse en el lugar, fecha y hora asignados para el servicio.</p>
+          <p><strong>2. Uniforme e imagen institucional:</strong> Portar uniforme completo, limpio y en buen estado.</p>
+          <p><strong>3. Conducta profesional:</strong> Mantener trato respetuoso, disciplina, ética y profesionalismo.</p>
+          <p><strong>4. Uso de recursos institucionales:</strong> Utilizar equipos y bienes solo para fines oficiales.</p>
+          <p><strong>5. Actuación operativa:</strong> Proceder conforme a protocolos institucionales.</p>
+          <p><strong>6. Reporte de novedades:</strong> Comunicar y registrar novedades de forma inmediata.</p>
+          <p><strong>7. Seguridad y autoprotección:</strong> Priorizar la integridad física propia, del equipo y ciudadanía.</p>
+          <p><strong>8. Atención ciudadana:</strong> Brindar orientación con respeto e imparcialidad.</p>
+          <p><strong>9. Uso de dispositivos móviles y redes:</strong> No difundir información del servicio sin autorización.</p>
+          <p><strong>10. Protección de datos:</strong> Toda información conocida por razón del servicio será reservada.</p>
+          <p><strong>11. Prohibiciones:</strong> No consumir alcohol o sustancias sujetas a fiscalización ni recibir beneficios indebidos.</p>
+          <p><strong>12. Aptitud para el servicio:</strong> Presentarse en condiciones físicas y mentales adecuadas.</p>
+          <p><strong>13. Responsabilidad:</strong> El incumplimiento podrá generar acciones administrativas, civiles o penales.</p>
+        </div>
 
-              <input
-                value={cedula}
-                onChange={(event) => setCedula(event.target.value)}
-                placeholder="Ingresa tu cédula"
-                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-400"
-              />
-            </div>
-
-            <div>
-              <label className="text-sm font-medium text-slate-300">
-                Código de validación
-              </label>
-
-              <input
-                type="password"
-                value={codigoValidacion}
-                onChange={(event) => setCodigoValidacion(event.target.value)}
-                placeholder="Código registrado en NOMINA"
-                className="mt-2 w-full rounded-xl border border-slate-700 bg-slate-950 px-4 py-3 text-white outline-none focus:border-cyan-400"
-              />
-            </div>
-          </div>
-
-          <div className="mt-6 rounded-2xl border border-amber-800 bg-amber-950/20 p-5">
-            <h2 className="font-semibold text-amber-300">
-              Disposiciones generales del servicio
-            </h2>
-
-            <div className="mt-4 space-y-3 text-sm leading-6 text-slate-300">
-              <p>
-                Declaro que la información consultada corresponde
-                exclusivamente a mi distribución operativa y que será utilizada
-                únicamente para fines institucionales.
-              </p>
-
-              <p>
-                Reconozco que la asignación puede estar sujeta a cambios por
-                novedades operativas, permisos, reemplazos, emergencias o
-                disposiciones superiores.
-              </p>
-
-              <p>
-                Me comprometo a revisar oportunamente mi puesto, horario,
-                función y observaciones, y a cumplir las disposiciones del
-                Cuerpo de Agentes de Control Municipal de Guayaquil.
-              </p>
-
-              <p className="text-xs text-slate-500">
-                Versión del documento: {VERSION_DOCUMENTO}
-              </p>
-            </div>
-
-            <label className="mt-5 flex items-start gap-3 text-sm text-amber-200">
-              <input
-                type="checkbox"
-                checked={aceptaDisposiciones}
-                onChange={(event) =>
-                  setAceptaDisposiciones(event.target.checked)
-                }
-                className="mt-1"
-              />
-
-              <span>
-                He leído y acepto las disposiciones generales del servicio,
-                normas internas, lineamientos de uso del sistema y
-                responsabilidad sobre el manejo de información.
-              </span>
-            </label>
-          </div>
-
-          <div className="mt-6 rounded-2xl border border-slate-800 bg-slate-950 p-5">
-            <label className="text-sm font-medium text-slate-300">
-              Validación anti-bot
-            </label>
-
-            <p className="mt-2 text-sm text-slate-400">
-              Responde: {captcha.a} + {captcha.b} =
-            </p>
-
-            <input
-              value={captchaRespuesta}
-              onChange={(event) => setCaptchaRespuesta(event.target.value)}
-              placeholder="Respuesta"
-              className="mt-2 w-full max-w-xs rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-white outline-none focus:border-cyan-400"
-            />
-          </div>
-
+        <div className="border-t border-slate-200 px-6 py-4">
           <button
-            type="submit"
-            disabled={!puedeConsultar}
-            className="mt-6 rounded-xl bg-cyan-400 px-4 py-3 font-semibold text-slate-950 hover:bg-cyan-300 disabled:cursor-not-allowed disabled:opacity-60"
+            type="button"
+            onClick={onClose}
+            className="w-full rounded-xl bg-[#073763] px-4 py-3 font-black text-white"
           >
-            {consultando ? "Consultando..." : "Consultar asignación"}
+            Cerrar
           </button>
-        </form>
-
-        {mensaje ? (
-          <div className="mt-6 rounded-xl border border-slate-700 bg-slate-900 px-4 py-3 text-sm text-slate-300">
-            {mensaje}
-          </div>
-        ) : null}
-
-        {resultado ? (
-          <div className="mt-8 rounded-2xl border border-slate-800 bg-slate-900">
-            <div className="border-b border-slate-800 px-5 py-4">
-              <h2 className="font-semibold text-cyan-300">
-                Resultado de consulta
-              </h2>
-
-              <p className="mt-1 text-sm text-slate-400">
-                Información disponible para el agente validado.
-              </p>
-            </div>
-
-            <div className="grid gap-4 p-5 md:grid-cols-2">
-              <div>
-                <p className="text-xs text-slate-500">Cédula</p>
-                <p className="mt-1 font-semibold text-slate-300">
-                  {resultado.agente.cedula}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-xs text-slate-500">Nombre</p>
-                <p className="mt-1 font-semibold text-slate-300">
-                  {resultado.agente.nombres ?? "-"}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-xs text-slate-500">Grupo</p>
-                <p className="mt-1 font-semibold text-slate-300">
-                  {resultado.agente.grupo ?? "-"}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-xs text-slate-500">Área</p>
-                <p className="mt-1 font-semibold text-slate-300">
-                  {resultado.agente.area ?? "-"}
-                </p>
-              </div>
-
-              {resultado.asignacion ? (
-                <>
-                  <div>
-                    <p className="text-xs text-slate-500">Puesto</p>
-                    <p className="mt-1 font-semibold text-cyan-300">
-                      {resultado.asignacion.id_puesto}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-xs text-slate-500">Función</p>
-                    <p className="mt-1 font-semibold text-slate-300">
-                      {resultado.asignacion.funcion ?? "-"}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-xs text-slate-500">Horario</p>
-                    <p className="mt-1 font-semibold text-slate-300">
-                      {resultado.asignacion.horario ?? "-"}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-xs text-slate-500">Fecha inicio</p>
-                    <p className="mt-1 font-semibold text-slate-300">
-                      {resultado.asignacion.fecha_inicio}
-                    </p>
-                  </div>
-
-                  <div className="md:col-span-2">
-                    <p className="text-xs text-slate-500">Observación</p>
-                    <p className="mt-1 font-semibold text-slate-300">
-                      {resultado.asignacion.observacion ?? "-"}
-                    </p>
-                  </div>
-                </>
-              ) : (
-                <div className="md:col-span-2 rounded-xl border border-amber-800 bg-amber-950/20 p-4 text-amber-200">
-                  No tienes una asignación activa registrada.
-                </div>
-              )}
-            </div>
-          </div>
-        ) : null}
-      </section>
-    </main>
+        </div>
+      </div>
+    </div>
   );
 }

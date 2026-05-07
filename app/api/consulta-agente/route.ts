@@ -19,10 +19,16 @@ const MESES = [
 ];
 
 type CicloRow = Record<string, unknown> & {
+  id?: string;
+  nombre_ciclo?: string | null;
+  tipo_ciclo?: string | null;
   mes?: string | null;
   grupo?: string | null;
-  dias_trabajo?: number | null;
-  dias_descanso?: number | null;
+  dias_trabajo?: number | string | null;
+  dias_descanso?: number | string | null;
+  dias_plan?: unknown;
+  anio?: number | string | null;
+  mes_numero?: number | string | null;
 };
 
 function limpiarCedula(valor: unknown) {
@@ -50,26 +56,119 @@ function normalizarClave(valor: unknown) {
     .toUpperCase();
 }
 
-function obtenerValor(row: Record<string, unknown>, posibles: string[]) {
-  const entries = Object.entries(row);
+function extraerValorCelda(valor: unknown) {
+  if (valor === null || valor === undefined) return null;
 
-  for (const posible of posibles) {
-    const posibleNormalizado = normalizarClave(posible);
+  if (typeof valor === "object" && !Array.isArray(valor)) {
+    const obj = valor as Record<string, unknown>;
 
-    const encontrado = entries.find(
-      ([key, value]) =>
-        normalizarClave(key) === posibleNormalizado &&
+    return (
+      obj.valor ??
+      obj.estado ??
+      obj.tipo ??
+      obj.trabaja ??
+      obj.dia ??
+      obj.value ??
+      null
+    );
+  }
+
+  return valor;
+}
+
+function obtenerDesdeDiasPlan(diasPlan: unknown, dia: number) {
+  if (!diasPlan) return null;
+
+  let plan = diasPlan;
+
+  if (typeof diasPlan === "string") {
+    try {
+      plan = JSON.parse(diasPlan);
+    } catch {
+      return diasPlan;
+    }
+  }
+
+  if (Array.isArray(plan)) {
+    const valorDirecto = plan[dia - 1];
+
+    if (valorDirecto !== undefined && valorDirecto !== null) {
+      return extraerValorCelda(valorDirecto);
+    }
+
+    const encontrado = plan.find((item) => {
+      if (!item || typeof item !== "object") return false;
+
+      const obj = item as Record<string, unknown>;
+
+      return Number(obj.dia ?? obj.numero ?? obj.day) === dia;
+    });
+
+    return extraerValorCelda(encontrado);
+  }
+
+  if (typeof plan === "object") {
+    const obj = plan as Record<string, unknown>;
+
+    const diaDosDigitos = String(dia).padStart(2, "0");
+
+    const candidatos = [
+      String(dia),
+      diaDosDigitos,
+      `dia_${dia}`,
+      `dia_${diaDosDigitos}`,
+      `dia${dia}`,
+      `dia${diaDosDigitos}`,
+      `dia ${dia}`,
+      `dia ${diaDosDigitos}`,
+      `DIA_${dia}`,
+      `DIA_${diaDosDigitos}`,
+      `DIA${dia}`,
+      `DIA${diaDosDigitos}`,
+      `DIA ${dia}`,
+      `DIA ${diaDosDigitos}`,
+      `d${dia}`,
+      `d${diaDosDigitos}`,
+      `D${dia}`,
+      `D${diaDosDigitos}`,
+    ];
+
+    for (const candidato of candidatos) {
+      const valor = obj[candidato];
+
+      if (valor !== undefined && valor !== null && String(valor).trim() !== "") {
+        return extraerValorCelda(valor);
+      }
+    }
+
+    const encontrado = Object.entries(obj).find(([key, value]) => {
+      const clave = normalizarClave(key);
+
+      const matchDia = clave.match(/^DIA0?(\d{1,2})$/);
+      const matchD = clave.match(/^D0?(\d{1,2})$/);
+      const matchNumero = clave.match(/^0?(\d{1,2})$/);
+
+      const numeroDia = matchDia?.[1] ?? matchD?.[1] ?? matchNumero?.[1];
+
+      return (
+        numeroDia &&
+        Number(numeroDia) === dia &&
         value !== undefined &&
         value !== null &&
         String(value).trim() !== ""
-    );
+      );
+    });
 
     if (encontrado) {
-      return encontrado[1];
+      return extraerValorCelda(encontrado[1]);
     }
   }
 
   return null;
+}
+function numero(valor: unknown) {
+  const n = Number(valor ?? 0);
+  return Number.isFinite(n) ? n : 0;
 }
 
 function diasDelMes(anio: number, mesIndex: number) {
@@ -92,6 +191,70 @@ function esDiaTrabajo(valor: unknown) {
   );
 }
 
+function obtenerCampoNormalizado(row: Record<string, unknown>, nombres: string[]) {
+  const entries = Object.entries(row);
+
+  for (const nombre of nombres) {
+    const buscado = normalizarClave(nombre);
+
+    const encontrado = entries.find(([key, value]) => {
+      return (
+        normalizarClave(key) === buscado &&
+        value !== undefined &&
+        value !== null &&
+        String(value).trim() !== ""
+      );
+    });
+
+    if (encontrado) return encontrado[1];
+  }
+
+  return null;
+}
+
+function obtenerValorDia(ciclo: CicloRow, dia: number) {
+  const valorJson = obtenerDesdeDiasPlan(ciclo.dias_plan, dia);
+
+  if (
+    valorJson !== null &&
+    valorJson !== undefined &&
+    String(valorJson).trim() !== ""
+  ) {
+    return valorJson;
+  }
+
+  const diaDosDigitos = String(dia).padStart(2, "0");
+
+  const candidatos = [
+    `dia_${dia}`,
+    `dia_${diaDosDigitos}`,
+    `dia${dia}`,
+    `dia${diaDosDigitos}`,
+    `dia ${dia}`,
+    `dia ${diaDosDigitos}`,
+    `d_${dia}`,
+    `d_${diaDosDigitos}`,
+    `d${dia}`,
+    `d${diaDosDigitos}`,
+    `DIA_${dia}`,
+    `DIA_${diaDosDigitos}`,
+    `DIA${dia}`,
+    `DIA${diaDosDigitos}`,
+    `DIA ${dia}`,
+    `DIA ${diaDosDigitos}`,
+    `D ${dia}`,
+    `D ${diaDosDigitos}`,
+  ];
+
+  const valorPorNombre = obtenerCampoNormalizado(ciclo, candidatos);
+
+  if (valorPorNombre !== null) {
+    return valorPorNombre;
+  }
+
+  return null;
+}
+
 function construirCalendario(
   ciclo: CicloRow | null,
   anio: number,
@@ -101,29 +264,7 @@ function construirCalendario(
 
   const dias = Array.from({ length: totalDias }, (_, index) => {
     const dia = index + 1;
-
-    const diaDosDigitos = String(dia).padStart(2, "0");
-
-const valor = ciclo
-  ? obtenerValor(ciclo, [
-      `dia_${dia}`,
-      `dia_${diaDosDigitos}`,
-      `dia${dia}`,
-      `dia${diaDosDigitos}`,
-      `dia ${dia}`,
-      `dia ${diaDosDigitos}`,
-      `d${dia}`,
-      `d${diaDosDigitos}`,
-      `DIA_${dia}`,
-      `DIA_${diaDosDigitos}`,
-      `DIA${dia}`,
-      `DIA${diaDosDigitos}`,
-      `DIA ${dia}`,
-      `DIA ${diaDosDigitos}`,
-      `D ${dia}`,
-      `D ${diaDosDigitos}`,
-    ])
-  : null;
+    const valor = ciclo ? obtenerValorDia(ciclo, dia) : null;
 
     const fecha = new Date(anio, mesIndex, dia);
     const nombreDia = new Intl.DateTimeFormat("es-EC", {
@@ -135,7 +276,7 @@ const valor = ciclo
     return {
       dia,
       nombreDia,
-      valor: valor ? String(valor) : "",
+      valor: valor === null || valor === undefined ? "" : String(valor),
       trabaja,
       estado: trabaja ? "TRABAJA" : "LIBRE",
     };
@@ -144,19 +285,44 @@ const valor = ciclo
   const diasTrabajoCalculados = dias.filter((item) => item.trabaja).length;
   const diasLibresCalculados = dias.length - diasTrabajoCalculados;
 
+  const diasTrabajoTabla = ciclo
+    ? numero(
+        obtenerCampoNormalizado(ciclo, [
+          "dias_trabajo",
+          "dias trabajo",
+          "DIAS TRABAJO",
+          "DÍAS TRABAJO",
+        ])
+      )
+    : 0;
+
+  const diasDescansoTabla = ciclo
+    ? numero(
+        obtenerCampoNormalizado(ciclo, [
+          "dias_descanso",
+          "dias descanso",
+          "DIAS DESCANSO",
+          "DÍAS DESCANSO",
+        ])
+      )
+    : 0;
+
+  const camposDiaDetectados = ciclo
+    ? Object.keys(ciclo).filter((key) => {
+        const clave = normalizarClave(key);
+        return /^DIA0?\d{1,2}$/.test(clave) || /^D0?\d{1,2}$/.test(clave);
+      })
+    : [];
+
   return {
     mes: MESES[mesIndex],
     anio,
     dias,
-    dias_trabajo:
-      Number(ciclo?.dias_trabajo ?? 0) > 0
-        ? Number(ciclo?.dias_trabajo)
-        : diasTrabajoCalculados,
+    dias_trabajo: diasTrabajoTabla > 0 ? diasTrabajoTabla : diasTrabajoCalculados,
     dias_descanso:
-      Number(ciclo?.dias_descanso ?? 0) > 0
-        ? Number(ciclo?.dias_descanso)
-        : diasLibresCalculados,
+      diasDescansoTabla > 0 ? diasDescansoTabla : diasLibresCalculados,
     ciclo_encontrado: Boolean(ciclo),
+    campos_dia_detectados: camposDiaDetectados,
   };
 }
 
@@ -186,13 +352,36 @@ function calcularAvanceMes(
   return Math.round((trabajoEjecutado / totalTrabajo) * 100);
 }
 
-function buscarCiclo(ciclos: CicloRow[], grupo: string, mes: string) {
+function buscarCiclo(
+  ciclos: CicloRow[],
+  grupo: string,
+  mes: string,
+  anio: number,
+  mesNumero: number
+) {
   return (
-    ciclos.find(
-      (ciclo) =>
-        normalizar(ciclo.grupo) === normalizar(grupo) &&
-        normalizar(ciclo.mes) === normalizar(mes)
-    ) ?? null
+    ciclos.find((ciclo) => {
+      const grupoCiclo =
+        obtenerCampoNormalizado(ciclo, ["grupo", "GRUPO"]) ?? ciclo.grupo;
+
+      const mesCiclo = obtenerCampoNormalizado(ciclo, ["mes", "MES"]) ?? ciclo.mes;
+
+      const anioCiclo = Number(ciclo.anio ?? 0);
+      const mesNumeroCiclo = Number(ciclo.mes_numero ?? 0);
+
+      const coincideGrupo = normalizar(grupoCiclo) === normalizar(grupo);
+
+      const coincideMesTexto =
+        normalizar(mesCiclo) === normalizar(mes);
+
+      const coincideMesNumero =
+        mesNumeroCiclo > 0 && mesNumeroCiclo === mesNumero;
+
+      const coincideAnio =
+        !anioCiclo || anioCiclo === anio;
+
+      return coincideGrupo && coincideAnio && (coincideMesTexto || coincideMesNumero);
+    }) ?? null
   );
 }
 
@@ -308,16 +497,28 @@ export async function POST(request: Request) {
       );
     }
 
-    await supabaseAdmin.from("aceptaciones_consulta").insert({
-      cedula,
-      version_documento: VERSION_DOCUMENTO,
-      aceptado: true,
-      ip_origen:
-        request.headers.get("x-forwarded-for") ??
-        request.headers.get("x-real-ip") ??
-        null,
-      user_agent: request.headers.get("user-agent"),
-    });
+    const { error: errorAceptacion } = await supabaseAdmin
+      .from("aceptaciones_consulta")
+      .insert({
+        cedula,
+        version_documento: VERSION_DOCUMENTO,
+        aceptado: true,
+        ip_origen:
+          request.headers.get("x-forwarded-for") ??
+          request.headers.get("x-real-ip") ??
+          null,
+        user_agent: request.headers.get("user-agent"),
+      });
+
+    if (errorAceptacion) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Error registrando aceptación: ${errorAceptacion.message}`,
+        },
+        { status: 500 }
+      );
+    }
 
     const { data: asignacion, error: errorAsignacion } = await supabaseAdmin
       .from("asignaciones")
@@ -364,16 +565,20 @@ export async function POST(request: Request) {
     const ciclos = (ciclosData ?? []) as CicloRow[];
 
     const cicloActual = buscarCiclo(
-      ciclos,
-      grupoPersona,
-      MESES[mesActualIndex]
-    );
+  ciclos,
+  grupoPersona,
+  MESES[mesActualIndex],
+  anioActual,
+  mesActualIndex + 1
+);
 
-    const cicloSiguiente = buscarCiclo(
-      ciclos,
-      grupoPersona,
-      MESES[mesSiguienteIndex]
-    );
+const cicloSiguiente = buscarCiclo(
+  ciclos,
+  grupoPersona,
+  MESES[mesSiguienteIndex],
+  anioSiguiente,
+  mesSiguienteIndex + 1
+);
 
     const calendarioActual = construirCalendario(
       cicloActual,
@@ -404,6 +609,8 @@ export async function POST(request: Request) {
       avance_mes: calcularAvanceMes(calendarioActual, diaHoy),
       ciclo_actual_encontrado: calendarioActual.ciclo_encontrado,
       ciclo_siguiente_encontrado: calendarioSiguiente.ciclo_encontrado,
+      campos_dia_actual: calendarioActual.campos_dia_detectados,
+      campos_dia_siguiente: calendarioSiguiente.campos_dia_detectados,
     };
 
     return NextResponse.json({
