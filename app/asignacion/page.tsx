@@ -220,6 +220,13 @@ export default function AsignacionPage() {
   Ajustes
 </a>
 
+<a
+  href="/asignacion/publicacion"
+  className="rounded-xl border border-emerald-700 px-4 py-2 text-sm text-emerald-300 hover:border-emerald-400 hover:text-emerald-200"
+>
+  Publicar distributivo
+</a>
+
           </div>
         </div>
 
