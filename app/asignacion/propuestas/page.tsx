@@ -31,6 +31,7 @@ export default function PropuestasAsignacionPage() {
   const [cargando, setCargando] = useState(true);
   const [mensaje, setMensaje] = useState("");
   const [filtro, setFiltro] = useState("");
+const [eliminandoId, setEliminandoId] = useState("");
 
   useEffect(() => {
     async function cargarPropuestas() {
@@ -81,6 +82,60 @@ export default function PropuestasAsignacionPage() {
   const totalAplicadas = propuestas.filter(
     (propuesta) => propuesta.estado === "APLICADO"
   ).length;
+
+async function eliminarBorrador(propuesta: PropuestaAsignacion) {
+  if (propuesta.estado !== "BORRADOR") {
+    setMensaje("Solo se pueden eliminar propuestas en estado BORRADOR.");
+    return;
+  }
+
+  const confirmar = window.confirm(
+    `¿Deseas eliminar este borrador de propuesta para la fecha ${propuesta.fecha}? Esta acción no se puede deshacer.`
+  );
+
+  if (!confirmar) return;
+
+  setEliminandoId(propuesta.id);
+  setMensaje("");
+
+  const { data: sessionData } = await supabase.auth.getSession();
+
+  if (!sessionData.session) {
+    window.location.href = "/login";
+    return;
+  }
+
+  const { error } = await supabase
+    .from("propuestas_asignacion")
+    .delete()
+    .eq("id", propuesta.id)
+    .eq("estado", "BORRADOR");
+
+  if (error) {
+    setMensaje(`Error eliminando borrador: ${error.message}`);
+    setEliminandoId("");
+    return;
+  }
+
+  await supabase.from("auditoria").insert({
+    modulo: "ASIGNACION",
+    accion: "BORRADOR_PROPUESTA_ELIMINADO",
+    usuario_id: sessionData.session.user.id,
+    cedula: null,
+    detalle: {
+      propuesta_id: propuesta.id,
+      fecha: propuesta.fecha,
+      total_registros: propuesta.total_registros,
+    },
+  });
+
+  setPropuestas((actual) =>
+    actual.filter((item) => item.id !== propuesta.id)
+  );
+
+  setMensaje("Borrador eliminado correctamente.");
+  setEliminandoId("");
+}
 
   if (cargando) {
     return (
@@ -234,19 +289,28 @@ export default function PropuestasAsignacionPage() {
                       </td>
 
                       <td className="px-4 py-3">
-                        {propuesta.estado === "BORRADOR" ? (
-                          <a
-                            href={`/asignacion/propuesta?borrador=${propuesta.id}`}
-                            className="rounded-xl border border-cyan-700 px-3 py-2 text-xs font-semibold text-cyan-300 hover:border-cyan-400 hover:text-cyan-200"
-                          >
-                            Abrir
-                          </a>
-                        ) : (
-                          <span className="text-xs text-slate-500">
-                            Aplicada
-                          </span>
-                        )}
-                      </td>
+  {propuesta.estado === "BORRADOR" ? (
+    <div className="flex flex-wrap gap-2">
+      <a
+        href={`/asignacion/propuesta?borrador=${propuesta.id}`}
+        className="rounded-xl border border-cyan-700 px-3 py-2 text-xs font-semibold text-cyan-300 hover:border-cyan-400 hover:text-cyan-200"
+      >
+        Abrir
+      </a>
+
+      <button
+        type="button"
+        onClick={() => eliminarBorrador(propuesta)}
+        disabled={eliminandoId === propuesta.id}
+        className="rounded-xl border border-red-800 px-3 py-2 text-xs font-semibold text-red-300 hover:border-red-500 hover:text-red-200 disabled:cursor-not-allowed disabled:opacity-60"
+      >
+        {eliminandoId === propuesta.id ? "Eliminando..." : "Eliminar"}
+      </button>
+    </div>
+  ) : (
+    <span className="text-xs text-slate-500">Aplicada</span>
+  )}
+</td>
                     </tr>
                   ))}
                 </tbody>
