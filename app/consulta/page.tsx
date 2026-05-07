@@ -159,6 +159,12 @@ export default function ConsultaAgentePage() {
   const [modalDisposiciones, setModalDisposiciones] = useState(false);
   const [ahora, setAhora] = useState(new Date());
 
+  const [tipoSolicitud, setTipoSolicitud] = useState("");
+  const [detalleReporte, setDetalleReporte] = useState("");
+  const [prioridadReporte, setPrioridadReporte] = useState("MEDIA");
+  const [enviandoReporte, setEnviandoReporte] = useState(false);
+  const [mensajeReporte, setMensajeReporte] = useState("");
+
   useEffect(() => {
     renovarCaptcha();
 
@@ -182,6 +188,10 @@ export default function ConsultaAgentePage() {
     setMensaje("");
     setTipoMensaje("");
     setResultado(null);
+    setTipoSolicitud("");
+    setDetalleReporte("");
+    setPrioridadReporte("MEDIA");
+    setMensajeReporte("");
     renovarCaptcha();
   }
 
@@ -199,6 +209,7 @@ export default function ConsultaAgentePage() {
     setMensaje("");
     setTipoMensaje("");
     setResultado(null);
+    setMensajeReporte("");
 
     try {
       const response = await fetch("/api/consulta-agente", {
@@ -258,10 +269,73 @@ export default function ConsultaAgentePage() {
   const asignacion = resultado?.asignacion;
   const nombreAgente =
     resultado?.agente.nombres ??
-    campo(detalle, ["apellidos_y_nombres", "apellidos y nombres"], "AGENTE CACM-G");
+    campo(
+      detalle,
+      ["apellidos_y_nombres", "apellidos y nombres"],
+      "AGENTE CACM-G"
+    );
   const grupoAgente = resultado?.agente.grupo ?? texto(asignacion?.grupo);
   const areaAgente = resultado?.agente.area ?? texto(asignacion?.area);
-  const fechaPublicada = resultado?.distributivo?.fecha ?? "";
+
+  async function enviarReporteAgente(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!resultado) {
+      setMensajeReporte("Primero realiza la consulta del agente.");
+      return;
+    }
+
+    if (!tipoSolicitud) {
+      setMensajeReporte("Selecciona el tipo de solicitud.");
+      return;
+    }
+
+    if (detalleReporte.trim().length < 10) {
+      setMensajeReporte("Describe la novedad con al menos 10 caracteres.");
+      return;
+    }
+
+    setEnviandoReporte(true);
+    setMensajeReporte("");
+
+    try {
+      const response = await fetch("/api/reportes-agente", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          cedula: resultado.agente.cedula,
+          nombres: nombreAgente,
+          grupo: grupoAgente,
+          area: areaAgente,
+          tipoSolicitud,
+          detalle: detalleReporte,
+          prioridad: prioridadReporte,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.ok) {
+        setMensajeReporte(data.error ?? "No se pudo enviar el reporte.");
+        return;
+      }
+
+      setMensajeReporte(data.mensaje ?? "Reporte enviado correctamente.");
+      setTipoSolicitud("");
+      setDetalleReporte("");
+      setPrioridadReporte("MEDIA");
+    } catch (error) {
+      setMensajeReporte(
+        error instanceof Error
+          ? error.message
+          : "Error inesperado enviando reporte."
+      );
+    } finally {
+      setEnviandoReporte(false);
+    }
+  }
 
   return (
     <main className="min-h-screen bg-[#eef3f7] text-slate-900">
@@ -554,7 +628,10 @@ export default function ConsultaAgentePage() {
                 />
                 <Dato
                   label="Tipo A1"
-                  value={campo(detalle, ["licencia_tipo_a1", "licencia tipo a1"])}
+                  value={campo(detalle, [
+                    "licencia_tipo_a1",
+                    "licencia tipo a1",
+                  ])}
                 />
                 <Dato
                   label="Tipo B"
@@ -566,7 +643,10 @@ export default function ConsultaAgentePage() {
                 />
                 <Dato
                   label="Tipo C1"
-                  value={campo(detalle, ["licencia_tipo_c1", "licencia tipo c1"])}
+                  value={campo(detalle, [
+                    "licencia_tipo_c1",
+                    "licencia tipo c1",
+                  ])}
                 />
                 <Dato
                   label="Tipo D"
@@ -574,7 +654,10 @@ export default function ConsultaAgentePage() {
                 />
                 <Dato
                   label="Tipo D1"
-                  value={campo(detalle, ["licencia_tipo_d1", "licencia tipo d1"])}
+                  value={campo(detalle, [
+                    "licencia_tipo_d1",
+                    "licencia tipo d1",
+                  ])}
                 />
                 <Dato
                   label="Tipo E"
@@ -582,7 +665,10 @@ export default function ConsultaAgentePage() {
                 />
                 <Dato
                   label="Tipo E1"
-                  value={campo(detalle, ["licencia_tipo_e1", "licencia tipo e1"])}
+                  value={campo(detalle, [
+                    "licencia_tipo_e1",
+                    "licencia tipo e1",
+                  ])}
                 />
                 <Dato
                   label="Tipo F"
@@ -628,28 +714,81 @@ export default function ConsultaAgentePage() {
             </Seccion>
 
             <Seccion titulo="Reportar Novedad / Actualizar Datos" color="red">
-              <div className="space-y-3">
-                <select
-                  disabled
-                  className="w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-slate-500"
-                >
-                  <option>Seleccione tipo de solicitud...</option>
-                </select>
+              <form onSubmit={enviarReporteAgente} className="space-y-3">
+                <div>
+                  <label className="mb-2 block text-sm font-black text-slate-700">
+                    Tipo de solicitud
+                  </label>
 
-                <textarea
-                  disabled
-                  placeholder="Módulo pendiente de habilitación"
-                  className="min-h-24 w-full rounded-xl border border-slate-300 bg-slate-50 px-4 py-3 text-slate-500"
-                />
+                  <select
+                    value={tipoSolicitud}
+                    onChange={(event) => setTipoSolicitud(event.target.value)}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 font-semibold outline-none focus:border-[#073763]"
+                  >
+                    <option value="">Seleccione...</option>
+                    <option value="NOVEDAD OPERATIVA">Novedad operativa</option>
+                    <option value="CORRECCION DATOS">
+                      Corrección de datos personales
+                    </option>
+                    <option value="PROBLEMA ASIGNACION">
+                      Problema con asignación
+                    </option>
+                    <option value="AUSENTISMO">
+                      Ausentismo / novedad médica
+                    </option>
+                    <option value="REVISAR LICENCIA">
+                      Revisión de licencia
+                    </option>
+                    <option value="OTRO">Otro</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-black text-slate-700">
+                    Detalle
+                  </label>
+
+                  <textarea
+                    value={detalleReporte}
+                    onChange={(event) => setDetalleReporte(event.target.value)}
+                    placeholder="Describe la novedad o solicitud..."
+                    className="min-h-28 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 font-semibold outline-none focus:border-[#073763]"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-2 block text-sm font-black text-slate-700">
+                    Prioridad
+                  </label>
+
+                  <select
+                    value={prioridadReporte}
+                    onChange={(event) =>
+                      setPrioridadReporte(event.target.value)
+                    }
+                    className="w-full rounded-xl border border-slate-300 bg-white px-4 py-3 font-semibold outline-none focus:border-[#073763]"
+                  >
+                    <option value="BAJA">BAJA</option>
+                    <option value="MEDIA">MEDIA</option>
+                    <option value="ALTA">ALTA</option>
+                    <option value="URGENTE">URGENTE</option>
+                  </select>
+                </div>
+
+                {mensajeReporte ? (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-bold text-slate-700">
+                    {mensajeReporte}
+                  </div>
+                ) : null}
 
                 <button
-                  type="button"
-                  disabled
-                  className="w-full rounded-xl bg-slate-300 px-4 py-3 font-black text-slate-500"
+                  type="submit"
+                  disabled={enviandoReporte}
+                  className="w-full rounded-xl bg-[#073763] px-4 py-3 font-black uppercase text-white transition hover:bg-[#052f56] disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  Enviar reporte
+                  {enviandoReporte ? "Enviando reporte..." : "Enviar reporte"}
                 </button>
-              </div>
+              </form>
             </Seccion>
           </div>
         )}
