@@ -193,6 +193,13 @@ export default function AsignacionPage() {
 </a>
 
 <a
+  href="/asignacion/resumen"
+  className="rounded-xl border border-cyan-700 px-4 py-2 text-sm text-cyan-300 hover:border-cyan-400 hover:text-cyan-200"
+>
+  Resumen operativo
+</a>
+
+<a
   href="/asignacion/propuesta"
   className="rounded-xl border border-cyan-700 px-4 py-2 text-sm text-cyan-300 hover:border-cyan-400 hover:text-cyan-200"
 >

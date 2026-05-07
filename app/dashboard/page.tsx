@@ -130,6 +130,11 @@ export default function DashboardPage() {
       "Indicadores, exportaciones y reportes operativos.",
       "#",
     ],
+[
+  "Resumen operativo",
+  "Vista consolidada de asignaciones, distributivos publicados, reportes y déficit operativo.",
+  "/asignacion/resumen",
+],
   ];
 
   return (
