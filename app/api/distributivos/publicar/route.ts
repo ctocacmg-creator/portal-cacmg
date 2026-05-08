@@ -59,8 +59,39 @@ export async function POST(request: Request) {
 
     if (error) {
       return NextResponse.json(
-        { ok: false, error: `Error publicando distributivo: ${error.message}` },
+        {
+          ok: false,
+          error: `Error publicando distributivo: ${error.message}`,
+        },
         { status: 500 }
+      );
+    }
+
+    const { error: errorAuditoria } = await supabaseAdmin
+      .from("auditoria")
+      .insert({
+        modulo: "DISTRIBUTIVOS",
+        accion: "DISTRIBUTIVO_PUBLICADO",
+        usuario_id: null,
+        cedula: null,
+        ip:
+          request.headers.get("x-forwarded-for") ??
+          request.headers.get("x-real-ip") ??
+          null,
+        user_agent: request.headers.get("user-agent"),
+        detalle: {
+          distributivo_id: data.id,
+          fecha: data.fecha,
+          estado: data.estado,
+          observacion: data.observacion,
+          publicado_at: data.publicado_at,
+        },
+      });
+
+    if (errorAuditoria) {
+      console.error(
+        "Error registrando auditoría de distributivo:",
+        errorAuditoria.message
       );
     }
 

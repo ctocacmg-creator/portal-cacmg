@@ -143,6 +143,43 @@ export default function ReportesAgentePage() {
       return;
     }
 
+const { error: errorAuditoria } = await supabase.from("auditoria").insert({
+  modulo: "REPORTES_AGENTE",
+  accion: "REPORTE_AGENTE_REVISADO",
+  usuario_id: sessionData.session.user.id,
+  cedula: reporte.cedula,
+  detalle: {
+    reporte_id: reporte.id,
+    estado_anterior: reporte.estado,
+    estado_nuevo: nuevoEstado,
+    tipo_solicitud: reporte.tipo_solicitud,
+    prioridad: reporte.prioridad,
+    respuesta_admin: respuestaAdmin.trim() || null,
+  },
+});
+
+if (errorAuditoria) {
+  console.error(
+    "Error registrando auditoría de revisión de reporte:",
+    errorAuditoria.message
+  );
+}
+
+await supabase.from("auditoria").insert({
+  modulo: "REPORTES_AGENTE",
+  accion: "REPORTE_AGENTE_REVISADO",
+  usuario_id: sessionData.session.user.id,
+  cedula: reporte.cedula,
+  detalle: {
+    reporte_id: reporte.id,
+    estado_anterior: reporte.estado,
+    estado_nuevo: nuevoEstado,
+    tipo_solicitud: reporte.tipo_solicitud,
+    prioridad: reporte.prioridad,
+    respuesta_admin: respuestaAdmin.trim() || null,
+  },
+});
+
     setReportes((actuales) =>
       actuales.map((item) =>
         item.id === reporte.id

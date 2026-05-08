@@ -75,6 +75,13 @@ export async function POST(request: Request) {
       },
     });
 
+    const ipOrigen =
+      request.headers.get("x-forwarded-for") ??
+      request.headers.get("x-real-ip") ??
+      null;
+
+    const userAgent = request.headers.get("user-agent");
+
     const { data, error } = await supabaseAdmin
       .from("reportes_agente")
       .insert({
@@ -87,11 +94,8 @@ export async function POST(request: Request) {
         prioridad,
         estado: "PENDIENTE",
         origen: "PORTAL_AGENTE",
-        user_agent: request.headers.get("user-agent"),
-        ip_origen:
-          request.headers.get("x-forwarded-for") ??
-          request.headers.get("x-real-ip") ??
-          null,
+        user_agent: userAgent,
+        ip_origen: ipOrigen,
       })
       .select("id, cedula, tipo_solicitud, prioridad, estado, created_at")
       .single();
@@ -100,6 +104,31 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { ok: false, error: `Error registrando reporte: ${error.message}` },
         { status: 500 }
+      );
+    }
+
+    const { error: errorAuditoria } = await supabaseAdmin
+      .from("auditoria")
+      .insert({
+        modulo: "PORTAL_AGENTE",
+        accion: "REPORTE_AGENTE_ENVIADO",
+        usuario_id: null,
+        cedula,
+        ip: ipOrigen,
+        user_agent: userAgent,
+        detalle: {
+          reporte_id: data.id,
+          tipo_solicitud: tipoSolicitud,
+          prioridad,
+          estado: data.estado,
+          origen: "PORTAL_AGENTE",
+        },
+      });
+
+    if (errorAuditoria) {
+      console.error(
+        "Error registrando auditoría de reporte agente:",
+        errorAuditoria.message
       );
     }
 
